@@ -1,0 +1,72 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Reset e configurações base */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* Configuração do HTML e Body */
+html {
+  height: 100%;
+}
+
+body {
+  min-height: 100%;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Light mode (padrão) */
+body {
+  background-color: #f9fafb; /* gray-50 */
+  color: #111827; /* gray-900 */
+}
+
+/* Dark mode */
+.dark body {
+  background-color: #111827; /* gray-900 */
+  color: #f9fafb; /* gray-50 */
+}
+
+/* Garantir que o background funcione em todos os elementos */
+.dark {
+  color-scheme: dark;
+}
+
+/* Classes utilitárias do Tailwind para dark mode */
+@layer utilities {
+  .dark\:bg-gray-900 {
+    background-color: #111827 !important;
+  }
+  
+  .dark\:bg-gray-800 {
+    background-color: #1f2937 !important;
+  }
+  
+  .dark\:bg-gray-700 {
+    background-color: #374151 !important;
+  }
+  
+  .dark\:text-white {
+    color: #ffffff !important;
+  }
+  
+  .dark\:text-gray-100 {
+    color: #f3f4f6 !important;
+  }
+}
+
+/* Transições suaves */
+* {
+  transition-property: background-color, border-color, color, fill, stroke;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+
+/* Remover transições durante mudança de tema para evitar flicker */
+.transitioning-theme * {
+  transition: none !important;
+}
