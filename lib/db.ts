@@ -1,15 +1,38 @@
 import mysql from 'mysql2/promise';
 
-// Criar pool de conexões
-const pool = mysql.createPool({
-  host: process.env.DATABASE_HOST || process.env.MYSQL_HOST || 'localhost',
-  user: process.env.DATABASE_USER || process.env.MYSQL_USER || 'rodrigo',
-  password: process.env.DATABASE_PASSWORD || process.env.MYSQL_PASSWORD || '884422',
-  database: process.env.DATABASE_NAME || process.env.MYSQL_DATABASE || 'community_mapper',
+// Configuração de conexão para Railway
+const poolConfig = {
+  host: process.env.MYSQLHOST || 'localhost',
+  user: process.env.MYSQLUSER || 'root',
+  password: process.env.MYSQLPASSWORD || '',
+  database: process.env.MYSQLDATABASE || 'community_mapper',
+  port: parseInt(process.env.MYSQLPORT || '3306'),
   waitForConnections: true,
   connectionLimit: 10,
-  queueLimit: 0
+  queueLimit: 0,
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+};
+
+// Pool principal para community_mapper
+const communityPool = mysql.createPool({
+  ...poolConfig,
+  database: 'community_mapper'
 });
+
+// Pool para mapa_comunidade
+const mapaPool = mysql.createPool({
+  ...poolConfig,
+  database: 'mapa_comunidade'
+});
+
+// Usar pool padrão (community_mapper) para compatibilidade
+const pool = communityPool;
+
+// Exportar função query para compatibilidade
+export const query = async (sql: string, params?: any[]) => {
+  const [rows] = await pool.execute(sql, params || []);
+  return rows;
+};
 
 // Tipos TypeScript baseados nas tabelas
 export interface User {
@@ -26,7 +49,7 @@ export interface Person {
   user_id: number;
   name: string;
   nickname?: string;
-  birth_date?: Date | string; // Aceita Date ou string para flexibilidade
+  birth_date?: Date | string;
   gender?: 'M' | 'F' | 'O' | 'N';
   context: 'residencial' | 'profissional' | 'social' | 'servicos' | 'institucional' | 'politico';
   proximity: 'nucleo' | 'primeiro' | 'segundo' | 'terceiro' | 'periferia';
@@ -57,7 +80,7 @@ export interface Person {
   twitter?: string;
   linkedin?: string;
   notes?: string;
-  last_contact?: Date | string; // Aceita Date ou string para flexibilidade
+  last_contact?: Date | string;
   contact_frequency?: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly';
   created_at?: Date;
   updated_at?: Date;
@@ -178,7 +201,6 @@ export async function getUserById(id: number): Promise<User | null> {
 // === PEOPLE ===
 export async function getPeopleByUserId(userId: number): Promise<Person[]> {
   try {
-    // Primeiro, verificar se o usuário é administrativo
     const [userRows] = await pool.execute(
       'SELECT email FROM users WHERE id = ?',
       [userId]
@@ -193,24 +215,20 @@ export async function getPeopleByUserId(userId: number): Promise<Person[]> {
     
     const userEmail = userResult[0].email;
     
-    // Verificar se é usuário administrativo
     const isAdmin = userEmail.includes('admin') || 
                    userEmail.includes('gerente') || 
                    userEmail.includes('super');
     
     console.log(`Usuário ${userEmail} ${isAdmin ? 'É ADMIN' : 'é usuário comum'}`);
     
-    // Query e parâmetros diferentes para admins
     let query: string;
     let params: any[];
     
     if (isAdmin) {
-      // Admins veem TODAS as pessoas
       query = 'SELECT * FROM people ORDER BY name';
       params = [];
       console.log('Admin: buscando TODAS as pessoas');
     } else {
-      // Usuários comuns veem apenas suas pessoas
       query = 'SELECT * FROM people WHERE user_id = ? ORDER BY name';
       params = [userId];
       console.log(`Usuário comum: buscando pessoas do user_id ${userId}`);
@@ -270,7 +288,6 @@ export async function createPerson(person: Omit<Person, 'id' | 'created_at' | 'u
       )
     `;
     
-    // Preparar valores, tratando booleanos e valores nulos
     const values = [
       person.user_id,
       person.name,
@@ -314,7 +331,6 @@ export async function createPerson(person: Omit<Person, 'id' | 'created_at' | 'u
     
     const insertId = (result as any).insertId;
     
-    // Buscar a pessoa recém criada
     const newPerson = await getPersonById(insertId);
     
     if (!newPerson) {
@@ -330,10 +346,8 @@ export async function createPerson(person: Omit<Person, 'id' | 'created_at' | 'u
 
 export async function updatePerson(id: number, updates: Partial<Person>): Promise<boolean> {
   try {
-    // Remove campos que não devem ser atualizados
     const { id: _, user_id, created_at, updated_at, ...updateData } = updates;
     
-    // Filtra apenas campos com valores definidos
     const fields = Object.keys(updateData).filter(
       key => updateData[key as keyof typeof updateData] !== undefined
     );
@@ -343,16 +357,13 @@ export async function updatePerson(id: number, updates: Partial<Person>): Promis
       return false;
     }
     
-    // Prepara os valores, tratando tipos especiais
     const values = fields.map(field => {
       let value = updateData[field as keyof typeof updateData];
       
-      // Tratamento especial para campos booleanos
       if (field === 'is_candidate' || field === 'is_elected') {
         value = value ? 1 : 0;
       }
       
-      // Converte strings vazias em null
       if (value === '') {
         value = null;
       }
@@ -360,10 +371,8 @@ export async function updatePerson(id: number, updates: Partial<Person>): Promis
       return value;
     });
     
-    // Adiciona o ID ao final
     values.push(id);
     
-    // Constrói a query dinamicamente
     const setClause = fields.map(f => `${f} = ?`).join(', ');
     const query = `
       UPDATE people 
@@ -437,7 +446,6 @@ export async function createGroup(group: Omit<Group, 'id' | 'created_at' | 'upda
     
     const insertId = (result as any).insertId;
     
-    // Buscar o grupo recém criado
     const [newGroup] = await pool.execute(
       'SELECT * FROM `groups` WHERE id = ?',
       [insertId]
@@ -534,7 +542,6 @@ export async function getPersonRelationships(personId: number): Promise<any[]> {
 export async function createRelationship(data: Omit<Relationship, 'id'>): Promise<boolean> {
   const connection = await pool.getConnection();
   try {
-    // Garantir que person_a_id < person_b_id para evitar duplicatas
     const personAId = Math.min(data.person_a_id, data.person_b_id);
     const personBId = Math.max(data.person_a_id, data.person_b_id);
     
@@ -749,7 +756,6 @@ export async function addTagToPerson(personId: number, tagId: number): Promise<b
     return true;
   } catch (error: any) {
     if (error.code === 'ER_DUP_ENTRY') {
-      // Tag já associada à pessoa - retorna true pois o estado final é o desejado
       return true;
     }
     console.error('Erro ao adicionar tag à pessoa:', error);
