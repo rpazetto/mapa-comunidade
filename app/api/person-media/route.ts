@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../auth/[...nextauth]/route';
-import { query } from '@/lib/db';
+import { query } from '@/lib/db-railway';
 
 // GET - Listar mídias de uma pessoa
 export async function GET(request: NextRequest) {
