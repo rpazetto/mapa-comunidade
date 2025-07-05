@@ -27,3 +27,13 @@ const dbConfigMC = {
 
 export const dbCM = mysql.createPool(dbConfigCM);
 export const dbMC = mysql.createPool(dbConfigMC);
+
+// Função query genérica para compatibilidade
+export async function query(sql: string, params?: any[], database: 'cm' | 'mc' = 'cm') {
+  const pool = database === 'cm' ? dbCM : dbMC;
+  const [results] = await pool.execute(sql, params);
+  return results;
+}
+
+// Exportar pools individuais também
+export { dbCM as poolCM, dbMC as poolMC };
