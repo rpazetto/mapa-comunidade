@@ -8,12 +8,16 @@ console.log('DATABASE_URL_CM exists:', !!process.env.DATABASE_URL_CM);
 console.log('DATABASE_URL_MC exists:', !!process.env.DATABASE_URL_MC);
 console.log('MYSQL_HOST:', process.env.MYSQL_HOST);
 
+// Declarar as variáveis primeiro
+let dbCM: mysql.Pool;
+let dbMC: mysql.Pool;
+
 // Tentar usar DATABASE_URL primeiro
 if (process.env.DATABASE_URL_CM && process.env.DATABASE_URL_MC) {
   console.log('Using DATABASE_URL configuration');
   
-  export const dbCM = mysql.createPool(process.env.DATABASE_URL_CM);
-  export const dbMC = mysql.createPool(process.env.DATABASE_URL_MC);
+  dbCM = mysql.createPool(process.env.DATABASE_URL_CM);
+  dbMC = mysql.createPool(process.env.DATABASE_URL_MC);
   
 } else {
   console.log('Using individual connection parameters');
@@ -46,9 +50,12 @@ if (process.env.DATABASE_URL_CM && process.env.DATABASE_URL_MC) {
   console.log('CM Config:', { host: dbConfigCM.host, port: dbConfigCM.port, db: dbConfigCM.database });
   console.log('MC Config:', { host: dbConfigMC.host, port: dbConfigMC.port, db: dbConfigMC.database });
 
-  export const dbCM = mysql.createPool(dbConfigCM);
-  export const dbMC = mysql.createPool(dbConfigMC);
+  dbCM = mysql.createPool(dbConfigCM);
+  dbMC = mysql.createPool(dbConfigMC);
 }
+
+// Exportar as pools
+export { dbCM, dbMC };
 
 // Função query genérica
 export async function query(sql: string, params?: any[], database: 'cm' | 'mc' = 'cm') {
@@ -198,6 +205,3 @@ export async function deleteTag(id: string) {
     return false;
   }
 }
-
-// Re-exportar funções do dba.ts
-export * from './dba';
