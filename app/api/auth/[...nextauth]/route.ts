@@ -4,6 +4,15 @@ import CredentialsProvider from 'next-auth/providers/credentials';
 import bcrypt from 'bcryptjs';
 import { getUserByEmail } from '@/lib/db';
 
+const NEXTAUTH_SECRET = process.env.NEXTAUTH_SECRET || "COLE_O_SECRET_QUE_VOCE_GEROU_AQUI";
+
+console.log('NextAuth Secret check:', {
+  fromEnv: !!process.env.NEXTAUTH_SECRET,
+  usingFallback: !process.env.NEXTAUTH_SECRET,
+  secretLength: NEXTAUTH_SECRET.length
+});
+
+
 const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
@@ -62,7 +71,7 @@ const authOptions: NextAuthOptions = {
       return session;
     },
   },
-  secret: process.env.NEXTAUTH_SECRET,
+  secret: NEXTAUTH_SECRET,
 };
 
 const handler = NextAuth(authOptions);

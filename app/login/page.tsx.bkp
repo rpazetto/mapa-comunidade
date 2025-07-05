@@ -140,6 +140,19 @@ export default function LoginPage() {
             </button>
           </div>
 
+          <div className="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+            <p className="text-sm text-center text-gray-600 dark:text-gray-400 mb-2">
+              Credenciais de teste:
+            </p>
+            <div className="text-center">
+              <p className="font-mono text-sm text-gray-800 dark:text-gray-200">
+                Email: rodrigo@example.com
+              </p>
+              <p className="font-mono text-sm text-gray-800 dark:text-gray-200">
+                Senha: 123456
+              </p>
+            </div>
+          </div>
         </form>
       </div>
     </div>
