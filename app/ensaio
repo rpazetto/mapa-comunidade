@@ -1,0 +1,1094 @@
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import { Plus, Search, Filter, Users, MapPin, Heart, Briefcase, Home, Settings, Trash2, Edit3, LogOut, Download, Moon, Sun, Camera, Menu, Check, User, Link, Map, BarChart3, Upload, Eye, Phone, Calendar, FileText, Vote, X } from 'lucide-react';
+import { useSession, signOut } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
+import { usePeople } from './hooks/usePeople';
+import { useTheme } from './components/ThemeProvider';
+import NetworkGraph from './components/NetworkGraph';
+import AnalyticsDashboard from './components/AnalyticsDashboard';
+import ExportModal from './components/ExportModal';
+import PhotoUploadModal from './components/PhotoUploadModal';
+import BulkActions from './components/BulkActions';
+import MobileMenu from './components/MobileMenu';
+import RelationshipManager from './components/RelationshipManager';
+import PoliticalDashboard from './components/PoliticalDashboard';
+import { useTags } from './hooks/useTags';
+import TagManager from './components/TagManager';
+import PersonTags from './components/PersonTags';
+import { Tag as TagIcon } from 'lucide-react';
+import GeographicMap from './components/GeographicMap';
+import DemographicAnalysis from './components/DemographicAnalysis';
+import GoalsDashboard from './components/GoalsDashboard';
+import ImportWizard from './components/ImportWizard';
+import PoliticalCalendar from './components/PoliticalCalendar';
+import { Calendar as CalendarIcon } from 'lucide-react';
+import PersonMediaVault from './components/PersonMediaVault';
+
+// 🆕 SISTEMA DE FOTOS COM INDEXEDDB INTEGRADO
+interface PhotoData {
+  id: string;
+  personId: string;
+  imageData: string;
+  compressed: string;
+  originalSize: number;
+  compressedSize: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+class PhotoStorageManager {
+  private dbName = 'NodoPhotos';
+  private dbVersion = 1;
+  private storeName = 'photos';
+  private db: IDBDatabase | null = null;
+
+  async initDB(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(this.dbName, this.dbVersion);
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        this.db = request.result;
+        resolve();
+      };
+      request.onupgradeneeded = (event) => {
+        const db = (event.target as IDBOpenDBRequest).result;
+        if (!db.objectStoreNames.contains(this.storeName)) {
+          const store = db.createObjectStore(this.storeName, { keyPath: 'id' });
+          store.createIndex('personId', 'personId', { unique: true });
+        }
+      };
+    });
+  }
+
+  async compressImage(file: File, maxWidth = 400, maxHeight = 400, quality = 0.8): Promise<string> {
+    return new Promise((resolve) => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d')!;
+      const img = new Image();
+
+      img.onload = () => {
+        let { width, height } = img;
+        
+        if (width > height) {
+          if (width > maxWidth) {
+            height = (height * maxWidth) / width;
+            width = maxWidth;
+          }
+        } else {
+          if (height > maxHeight) {
+            width = (width * maxHeight) / height;
+            height = maxHeight;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        ctx.drawImage(img, 0, 0, width, height);
+        
+        let compressedData = canvas.toDataURL('image/jpeg', quality);
+        let currentQuality = quality;
+        
+        while (compressedData.length > 500000 && currentQuality > 0.1) {
+          currentQuality -= 0.1;
+          compressedData = canvas.toDataURL('image/jpeg', currentQuality);
+        }
+
+        resolve(compressedData);
+      };
+
+      img.src = URL.createObjectURL(file);
+    });
+  }
+
+  async savePhoto(personId: string, file: File): Promise<PhotoData> {
+    if (!this.db) await this.initDB();
+
+    const compressedData = await this.compressImage(file);
+    const thumbnailData = await this.compressImage(file, 100, 100, 0.6);
+
+    const photoData: PhotoData = {
+      id: `photo_${personId}`,
+      personId,
+      imageData: compressedData,
+      compressed: thumbnailData,
+      originalSize: file.size,
+      compressedSize: compressedData.length,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction([this.storeName], 'readwrite');
+      const store = transaction.objectStore(this.storeName);
+      const request = store.put(photoData);
+
+      request.onsuccess = () => {
+        console.log('✅ Foto salva no IndexedDB:', personId);
+        resolve(photoData);
+      };
+      request.onerror = () => {
+        console.error('❌ Erro ao salvar foto:', request.error);
+        reject(request.error);
+      };
+    });
+  }
+
+  async getAllPhotos(): Promise<Record<string, string>> {
+    if (!this.db) await this.initDB();
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction([this.storeName], 'readonly');
+      const store = transaction.objectStore(this.storeName);
+      const request = store.getAll();
+
+      request.onsuccess = () => {
+        const photos: Record<string, string> = {};
+        request.result.forEach((photo: PhotoData) => {
+          photos[photo.personId] = photo.compressed;
+        });
+        resolve(photos);
+      };
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async deletePhoto(personId: string): Promise<void> {
+    if (!this.db) await this.initDB();
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction([this.storeName], 'readwrite');
+      const store = transaction.objectStore(this.storeName);
+      const request = store.delete(`photo_${personId}`);
+
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async clearAllPhotos(): Promise<void> {
+    if (!this.db) await this.initDB();
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction([this.storeName], 'readwrite');
+      const store = transaction.objectStore(this.storeName);
+      const request = store.clear();
+
+      request.onsuccess = () => {
+        console.log('✅ Todas as fotos foram removidas');
+        resolve();
+      };
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async getStorageStats(): Promise<{count: number, totalSize: number}> {
+    if (!this.db) await this.initDB();
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction([this.storeName], 'readonly');
+      const store = transaction.objectStore(this.storeName);
+      const request = store.getAll();
+
+      request.onsuccess = () => {
+        const photos = request.result;
+        const stats = {
+          count: photos.length,
+          totalSize: photos.reduce((total: number, photo: PhotoData) => total + photo.compressedSize, 0)
+        };
+        resolve(stats);
+      };
+      request.onerror = () => reject(request.error);
+    });
+  }
+}
+
+const photoStorage = new PhotoStorageManager();
+
+// Hook personalizado para gerenciar fotos
+function usePhotoStorage() {
+  const [photos, setPhotos] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadPhotos = async () => {
+      try {
+        await photoStorage.initDB();
+        const allPhotos = await photoStorage.getAllPhotos();
+        setPhotos(allPhotos);
+        console.log('📸 Fotos carregadas do IndexedDB:', Object.keys(allPhotos).length);
+      } catch (error) {
+        console.error('❌ Erro ao carregar fotos:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadPhotos();
+  }, []);
+
+  const savePhoto = async (personId: string, file: File) => {
+    try {
+      setLoading(true);
+      const photoData = await photoStorage.savePhoto(personId, file);
+      setPhotos(prev => ({
+        ...prev,
+        [personId]: photoData.compressed
+      }));
+      return photoData.compressed;
+    } catch (error) {
+      console.error('❌ Erro ao salvar foto:', error);
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const deletePhoto = async (personId: string) => {
+    try {
+      await photoStorage.deletePhoto(personId);
+      setPhotos(prev => {
+        const newPhotos = { ...prev };
+        delete newPhotos[personId];
+        return newPhotos;
+      });
+    } catch (error) {
+      console.error('❌ Erro ao deletar foto:', error);
+      throw error;
+    }
+  };
+
+  const refreshPhotos = async () => {
+    try {
+      const allPhotos = await photoStorage.getAllPhotos();
+      setPhotos(allPhotos);
+    } catch (error) {
+      console.error('❌ Erro ao recarregar fotos:', error);
+    }
+  };
+
+  const clearAllPhotos = async () => {
+    try {
+      await photoStorage.clearAllPhotos();
+      setPhotos({});
+    } catch (error) {
+      console.error('❌ Erro ao limpar fotos:', error);
+      throw error;
+    }
+  };
+
+  return { photos, loading, savePhoto, deletePhoto, refreshPhotos, clearAllPhotos };
+}
+
+interface Person {
+  id: string;
+  name: string;
+  nickname?: string;
+  context: string;
+  proximity: string;
+  importance?: number;
+  trust_level?: number;
+  influence_level?: number;
+  occupation?: string;
+  company?: string;
+  position?: string;
+  professional_class?: string;
+  political_party?: string;
+  political_position?: string;
+  phone?: string;
+  mobile?: string;
+  email?: string;
+  city?: string;
+  state?: string;
+  neighborhood?: string;
+  notes?: string;
+  last_contact?: string;
+  contact_frequency?: string;
+  birth_date?: string;
+  gender?: string;
+  address?: string;
+  zip_code?: string;
+  whatsapp?: string;
+  political_role?: string;
+  is_candidate?: boolean;
+  is_elected?: boolean;
+}
+
+interface Context {
+  value: string;
+  label: string;
+  icon: string;
+  color: string;
+}
+
+interface ProximityLevel {
+  value: string;
+  label: string;
+  color: string;
+  priority: number;
+}
+
+// Função auxiliar para garantir dados válidos antes de enviar para o banco
+const preparePersonData = (person: Partial<Person>, isNew = false) => {
+  if (isNew && (!person.name || !person.context || !person.proximity)) {
+    throw new Error('Nome, contexto e proximidade são obrigatórios');
+  }
+
+  return {
+    ...(person.id && { id: person.id }),
+    name: person.name || '',
+    nickname: person.nickname || null,
+    birth_date: person.birth_date || null,
+    gender: (person.gender || 'N') as 'M' | 'F' | 'N',
+    context: person.context || '',
+    proximity: person.proximity || '',
+    importance: person.importance || 3,
+    trust_level: person.trust_level || 3,
+    influence_level: person.influence_level || 3,
+    occupation: person.occupation || null,
+    company: person.company || null,
+    position: person.position || null,
+    professional_class: person.professional_class || null,
+    education_level: null,
+    income_range: null,
+    political_party: person.political_party || null,
+    political_position: null,
+    is_candidate: Boolean(person.is_candidate),
+    is_elected: Boolean(person.is_elected),
+    political_role: person.political_role || null,
+    phone: person.phone || null,
+    mobile: person.mobile || null,
+    email: person.email || null,
+    address: person.address || null,
+    city: person.city || 'Gramado',
+    state: person.state || 'RS',
+    neighborhood: person.neighborhood || null,
+    zip_code: person.zip_code || null,
+    facebook: null,
+    instagram: null,
+    twitter: null,
+    linkedin: null,
+    whatsapp: person.whatsapp || null,
+    notes: person.notes || null,
+    last_contact: person.last_contact || null,
+    contact_frequency: person.contact_frequency || null
+  };
+};
+
+interface PersonProfileModalProps {
+  person: Person | null;
+  isOpen: boolean;
+  onClose: () => void;
+  onEdit: (person: Person) => void;
+  onOpenMediaVault: (person: Person) => void;
+  personPhoto?: string;
+  tags?: any[];
+  contexts: Context[];
+  proximityLevels: ProximityLevel[];
+  classesProfissionais: { valor: string; label: string }[];
+  partidosPoliticos: { sigla: string; nome: string; numero: string }[];
+  bairrosGramado: string[];
+}
+
+const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
+  person,
+  isOpen,
+  onClose,
+  onEdit,
+  onOpenMediaVault,
+  personPhoto,
+  tags = [],
+  contexts,
+  proximityLevels,
+  classesProfissionais,
+  partidosPoliticos,
+  bairrosGramado
+}) => {
+  if (!isOpen || !person) return null;
+
+  const contextInfo = contexts.find(c => c.value === person.context) || { label: '', icon: '', color: '' };
+  const proximityInfo = proximityLevels.find(p => p.value === person.proximity) || { label: '', color: '' };
+  const classeProfissional = classesProfissionais.find(c => c.valor === person.professional_class);
+  const partidoInfo = partidosPoliticos.find(p => p.sigla === person.political_party);
+
+  const calculateAge = (birthDate: string) => {
+    const birth = new Date(birthDate);
+    const today = new Date();
+    let age = today.getFullYear() - birth.getFullYear();
+    const m = today.getMonth() - birth.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
+      age--;
+    }
+    return age;
+  };
+
+  const formatDate = (dateString: string) => {
+    if (!dateString) return '-';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('pt-BR');
+  };
+
+  const daysSinceLastContact = () => {
+    if (!person.last_contact) return null;
+    const lastContact = new Date(person.last_contact);
+    const today = new Date();
+    const diffTime = Math.abs(today.getTime() - lastContact.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays;
+  };
+
+  const calculateRelevance = (person: Person): number => {
+    const proximityScore: Record<string, number> = {
+      'nucleo': 5,
+      'primeiro': 4,
+      'segundo': 3,
+      'terceiro': 2,
+      'periferia': 1
+    };
+    
+    const frequencyScore: Record<string, number> = {
+      'daily': 5,
+      'weekly': 4,
+      'monthly': 3,
+      'quarterly': 2,
+      'yearly': 1
+    };
+    
+    const pScore = proximityScore[person.proximity] || 1;
+    const iScore = person.importance || 3;
+    const fScore = person.contact_frequency ? frequencyScore[person.contact_frequency] || 2 : 2;
+    
+    return (pScore * 0.4) + (iScore * 0.3) + (fScore * 0.3);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" onClick={onClose}>
+      <div 
+        className="bg-white dark:bg-gray-800 rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto animate-slideIn"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header do modal permanece igual... */}
+        <div className="bg-gradient-to-r from-blue-600 to-blue-800 dark:from-blue-800 dark:to-blue-900 p-6 rounded-t-lg">
+          <div className="flex justify-between items-start">
+            <div className="flex items-center space-x-4">
+              <div className="relative">
+                {personPhoto ? (
+                  <img
+                    src={personPhoto}
+                    alt={person.name}
+                    className="w-24 h-24 rounded-full border-4 border-white dark:border-gray-700 object-cover"
+                  />
+                ) : (
+                  <div className="w-24 h-24 rounded-full bg-gray-200 dark:bg-gray-600 border-4 border-white dark:border-gray-700 flex items-center justify-center">
+                    <User className="w-12 h-12 text-gray-400 dark:text-gray-500" />
+                  </div>
+                )}
+              </div>
+              
+              <div className="text-white">
+                <h2 className="text-2xl font-bold">{person.name}</h2>
+                {person.nickname && (
+                  <p className="text-blue-100 italic">"{person.nickname}"</p>
+                )}
+                <div className="flex items-center gap-2 mt-2">
+                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${contextInfo.color}`}>
+                    {contextInfo.icon} {contextInfo.label}
+                  </span>
+                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${proximityInfo.color}`}>
+                    {proximityInfo.label}
+                  </span>
+                </div>
+              </div>
+            </div>
+            
+            <div className="flex space-x-2">
+              <button
+                onClick={() => {
+                  onOpenMediaVault(person);
+                  onClose();
+                }}
+                className="p-2 bg-white dark:bg-gray-700 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+                title="Acervo de Mídia"
+              >
+                <Briefcase className="w-5 h-5 text-gray-700 dark:text-gray-300" />
+              </button>
+              <button
+                onClick={() => {
+                  onEdit(person);
+                  onClose();
+                }}
+                className="p-2 bg-white dark:bg-gray-700 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+                title="Editar"
+              >
+                <Edit3 className="w-5 h-5 text-gray-700 dark:text-gray-300" />
+              </button>
+              <button
+                onClick={onClose}
+                className="p-2 bg-white dark:bg-gray-700 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+                title="Fechar"
+              >
+                <X className="w-5 h-5 text-gray-700 dark:text-gray-300" />
+              </button>
+            </div>
+          </div>
+          
+          <div className="mt-4 flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <span className="text-white text-sm">Importância:</span>
+              <div className="flex">
+                {[...Array(person.importance || 3)].map((_, i) => (
+                  <span key={i} className="text-yellow-300 text-lg">⭐</span>
+                ))}
+              </div>
+            </div>
+            {daysSinceLastContact() !== null && (
+              <div className="text-white text-sm">
+                Último contato há {daysSinceLastContact()} dias
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Conteúdo do perfil continua igual... (Grid de informações, etc.) */}
+        <div className="p-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Informações pessoais e profissionais permanecem iguais... */}
+          </div>
+          
+          <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
+            <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400">
+              <span>ID: {person.id}</span>
+              <span>Relevância: {calculateRelevance(person).toFixed(1)}/5.0</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default function Page() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
+  const [mounted, setMounted] = useState(false);
+  const { theme, toggleTheme } = useTheme();
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+  
+  const { 
+    people, 
+    loading: peopleLoading, 
+    error: peopleError, 
+    addPerson: addPersonToDb, 
+    updatePerson: updatePersonInDb, 
+    deletePerson: deletePersonFromDb,
+    refreshPeople
+  } = usePeople();
+
+  // 🆕 USAR O NOVO SISTEMA DE FOTOS
+  const { photos: personPhotos, loading: photosLoading, savePhoto, deletePhoto, refreshPhotos, clearAllPhotos } = usePhotoStorage();
+
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterContext, setFilterContext] = useState('all');
+  const [filterProximity, setFilterProximity] = useState('all');
+  const [filterImportance, setFilterImportance] = useState('all');
+  const [filterParty, setFilterParty] = useState('all');
+  const [filterNeighborhood, setFilterNeighborhood] = useState('all');
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [editingPerson, setEditingPerson] = useState<Person | null>(null);
+  const [viewMode, setViewMode] = useState<'table' | 'circles' | 'graph' | 'dashboard' | 'political' | 'geographic' | 'demographic' | 'goals' | 'calendar'>('table');
+  const [showWizard, setShowWizard] = useState(false);
+  const [wizardStep, setWizardStep] = useState(1);
+  const [brainstormList, setBrainstormList] = useState('');
+  const [currentContextScan, setCurrentContextScan] = useState('residencial');
+  const [showExportModal, setShowExportModal] = useState(false);
+  const { tags } = useTags();
+  const [showTagManager, setShowTagManager] = useState(false);
+  const [selectedPersonForTags, setSelectedPersonForTags] = useState<Person | null>(null);
+  const [showImportWizard, setShowImportWizard] = useState(false);
+  const [affiliatesData, setAffiliatesData] = useState<any[]>([]);
+  const [showCustomOccupation, setShowCustomOccupation] = useState(false);
+  const [showCustomNeighborhood, setShowCustomNeighborhood] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [selectedPersonForProfile, setSelectedPersonForProfile] = useState<Person | null>(null);
+  
+  // Estados para melhorias de interface
+  const [showPhotoModal, setShowPhotoModal] = useState(false);
+  const [selectedPersonForPhoto, setSelectedPersonForPhoto] = useState<string | null>(null);
+  const [selectedPeople, setSelectedPeople] = useState<Set<string>>(new Set());
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
+  
+  // Estados para relacionamentos
+  const [showRelationshipManager, setShowRelationshipManager] = useState(false);
+  const [selectedPersonForRelationship, setSelectedPersonForRelationship] = useState<Person | null>(null);
+
+  // Estados para o PersonMediaVault
+  const [showMediaVault, setShowMediaVault] = useState(false);
+  const [selectedPersonForMedia, setSelectedPersonForMedia] = useState<Person | null>(null);
+
+  // Arrays de dados permanecem iguais...
+  const contexts: Context[] = [
+    { value: 'residencial', label: 'Residencial', icon: '🏠', color: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' },
+    { value: 'profissional', label: 'Profissional', icon: '💼', color: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' },
+    { value: 'social', label: 'Social', icon: '👥', color: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200' },
+    { value: 'servicos', label: 'Serviços', icon: '🔧', color: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200' },
+    { value: 'institucional', label: 'Institucional', icon: '🏛️', color: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200' },
+    { value: 'politico', label: 'Político', icon: '🗳️', color: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' }
+  ];
+
+  const proximityLevels: ProximityLevel[] = [
+    { value: 'nucleo', label: 'Coordenadores', color: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200', priority: 1 },
+    { value: 'primeiro', label: 'Players Políticos', color: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200', priority: 2 },
+    { value: 'segundo', label: 'Líderes e Representantes', color: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200', priority: 3 },
+    { value: 'terceiro', label: 'Filiados e Simpatizantes', color: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200', priority: 4 },
+    { value: 'quarto', label: 'Players Potenciais', color: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200', priority: 5 },
+    { value: 'grupo1', label: 'Pertence ao Movimento', color: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200', priority: 6 },
+    { value: 'grupo2', label: 'Não Adere ao Movimento', color: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200', priority: 7 }
+  ];
+
+  const partidosPoliticos = [
+    { numero: '10', sigla: 'REPUBLICANOS', nome: 'Republicanos' },
+    { numero: '11', sigla: 'PP', nome: 'Progressistas' },
+    { numero: '12', sigla: 'PDT', nome: 'Partido Democrático Trabalhista' },
+    { numero: '13', sigla: 'PT', nome: 'Partido dos Trabalhadores' },
+    { numero: '14', sigla: 'PTB', nome: 'Partido Trabalhista Brasileiro' },
+    { numero: '15', sigla: 'MDB', nome: 'Movimento Democrático Brasileiro' },
+    { numero: '16', sigla: 'PSTU', nome: 'Partido Socialista dos Trabalhadores Unificado' },
+    { numero: '17', sigla: 'PSL', nome: 'Partido Social Liberal' },
+    { numero: '18', sigla: 'REDE', nome: 'Rede Sustentabilidade' },
+    { numero: '19', sigla: 'PODE', nome: 'Podemos' },
+    { numero: '20', sigla: 'PSC', nome: 'Partido Social Cristão' },
+    { numero: '21', sigla: 'PCB', nome: 'Partido Comunista Brasileiro' },
+    { numero: '22', sigla: 'PL', nome: 'Partido Liberal' },
+    { numero: '23', sigla: 'CIDADANIA', nome: 'Cidadania' },
+    { numero: '25', sigla: 'DEM', nome: 'Democratas' },
+    { numero: '27', sigla: 'DC', nome: 'Democracia Cristã' },
+    { numero: '28', sigla: 'PRTB', nome: 'Partido Renovador Trabalhista Brasileiro' },
+    { numero: '29', sigla: 'PCO', nome: 'Partido da Causa Operária' },
+    { numero: '30', sigla: 'NOVO', nome: 'Partido Novo' },
+    { numero: '31', sigla: 'PHS', nome: 'Partido Humanista da Solidariedade' },
+    { numero: '33', sigla: 'PMN', nome: 'Partido da Mobilização Nacional' },
+    { numero: '35', sigla: 'PMB', nome: 'Partido da Mulher Brasileira' },
+    { numero: '36', sigla: 'PTC', nome: 'Partido Trabalhista Cristão' },
+    { numero: '40', sigla: 'PSB', nome: 'Partido Socialista Brasileiro' },
+    { numero: '43', sigla: 'PV', nome: 'Partido Verde' },
+    { numero: '44', sigla: 'UNIÃO', nome: 'União Brasil' },
+    { numero: '45', sigla: 'PSDB', nome: 'Partido da Social Democracia Brasileira' },
+    { numero: '50', sigla: 'PSOL', nome: 'Partido Socialismo e Liberdade' },
+    { numero: '51', sigla: 'PATRIOTA', nome: 'Patriota' },
+    { numero: '54', sigla: 'PPL', nome: 'Partido Pátria Livre' },
+    { numero: '55', sigla: 'PSD', nome: 'Partido Social Democrático' },
+    { numero: '65', sigla: 'PCdoB', nome: 'Partido Comunista do Brasil' },
+    { numero: '70', sigla: 'AVANTE', nome: 'Avante' },
+    { numero: '77', sigla: 'SOLIDARIEDADE', nome: 'Solidariedade' },
+    { numero: '80', sigla: 'UP', nome: 'Unidade Popular' },
+    { numero: '90', sigla: 'PROS', nome: 'Partido Republicano da Ordem Social' },
+  ];
+
+  const classesProfissionais = [
+    { valor: 'saude_medicina', label: 'Saúde e Medicina' },
+    { valor: 'educacao_pesquisa', label: 'Educação e Pesquisa' },
+    { valor: 'tecnologia_informatica', label: 'Tecnologia e Informática' },
+    { valor: 'engenharia_arquitetura', label: 'Engenharia e Arquitetura' },
+    { valor: 'direito_justica', label: 'Direito e Justiça' },
+    { valor: 'comunicacao_midia', label: 'Comunicação e Mídia' },
+    { valor: 'administracao_negocios', label: 'Administração e Negócios' },
+    { valor: 'vendas_comercio', label: 'Vendas e Comércio' },
+    { valor: 'industria_producao', label: 'Indústria e Produção' },
+    { valor: 'construcao_civil', label: 'Construção Civil' },
+    { valor: 'transporte_logistica', label: 'Transporte e Logística' },
+    { valor: 'agricultura_pecuaria', label: 'Agricultura e Pecuária' },
+    { valor: 'arte_cultura', label: 'Arte e Cultura' },
+    { valor: 'esportes_lazer', label: 'Esportes e Lazer' },
+    { valor: 'beleza_estetica', label: 'Beleza e Estética' },
+    { valor: 'seguranca', label: 'Segurança' },
+    { valor: 'servicos_domesticos_pessoais', label: 'Serviços Domésticos e Pessoais' },
+    { valor: 'financas_seguros', label: 'Finanças e Seguros' },
+    { valor: 'hospitalidade_alimentacao', label: 'Hospitalidade e Alimentação' },
+    { valor: 'meio_ambiente', label: 'Meio Ambiente' },
+    { valor: 'servicos_sociais', label: 'Serviços Sociais' },
+    { valor: 'religiao_espiritualidade', label: 'Religião e Espiritualidade' },
+    { valor: 'servicos_publicos', label: 'Serviços Públicos' },
+    { valor: 'energia_utilidades', label: 'Energia e Utilidades' },
+    { valor: 'telecomunicacoes', label: 'Telecomunicações' },
+    { valor: 'comercio_exterior', label: 'Comércio Exterior' },
+    { valor: 'economia_criativa', label: 'Economia Criativa' },
+    { valor: 'consultoria_servicos_especializados', label: 'Consultoria e Serviços Especializados' },
+    { valor: 'manutencao_reparos', label: 'Manutenção e Reparos' },
+    { valor: 'ciencias_exatas_naturais', label: 'Ciências Exatas e Naturais' },
+    { valor: 'outros', label: 'Outros' }
+  ];
+
+  const bairrosGramado = [
+    'Centro', 'Avenida Central', 'Planalto', 'Carniel', 'Floresta', 'Jardim', 'Dutra', 'Piratini',
+    'Bavária', 'Bela Vista', 'Candiago', 'Carazal', 'Casagrande', 'Mato Queimado', 'Minuano',
+    'Monte Verde', 'Tirol', 'Três Pinheiros', 'Vale dos Pinheiros', 'Várzea Grande', 'Vila do Sol',
+    'Vila Suíça', 'Pórtico 1', 'Pórtico 2', 'Altos da Viação Férrea', 'Aspen',
+    'Linha 15', 'Linha 28', 'Linha Araripe', 'Linha Ávila', 'Linha Bonita', 'Linha Carahá',
+    'Linha Furna', 'Linha Marcondes', 'Linha Nova', 'Linha Pedras Brancas', 'Linha Quilombo',
+    'Linha Tapera', 'Morro do Arame', 'Serra Grande', 'Moleque', 'Gambelo', 'Moreira',
+    'Condomínio Residencial Aspen Mountain', 'Condomínio Vale do Bosque', 'Condomínio Knorrville',
+    'Condomínio O Bosque', 'Condomínio Portal de Gramado', 'Condomínio Residencial Villa Bella',
+    'Condomínio Saint Morit', 'Condomínio Villaggio', 'Condomínio Lagos de Gramado',
+    'Condomínio Buena Vista', 'Condomínio Montanha Del Fiori'
+  ].sort();
+
+  const [newPerson, setNewPerson] = useState<Partial<Person>>({
+    name: '',
+    context: '',
+    proximity: '',
+    occupation: '',
+    mobile: '',
+    city: 'Gramado',
+    neighborhood: '',
+    notes: '',
+    last_contact: '',
+    importance: 3,
+    contact_frequency: '',
+    political_party: '',
+    professional_class: ''
+  });
+
+  // 🆕 NOVA FUNÇÃO PARA ATUALIZAR FOTOS
+  const handlePhotoUpdate = async (personId: string, photoData: string | File) => {
+    try {
+      if (typeof photoData === 'string' && photoData === '') {
+        // Remoção de foto
+        await deletePhoto(personId);
+        console.log('✅ Foto removida do IndexedDB');
+      } else if (photoData instanceof File) {
+        // Nova foto
+        await savePhoto(personId, photoData);
+        console.log('✅ Foto salva no IndexedDB');
+      } else {
+        // Dados de foto já processados (do modal)
+        await refreshPhotos();
+        console.log('✅ Fotos atualizadas');
+      }
+    } catch (error) {
+      console.error('❌ Erro ao atualizar foto:', error);
+      alert('Erro ao processar foto. Tente novamente.');
+    }
+  };
+
+  // 🆕 FUNÇÃO PARA LIMPAR CACHE DE FOTOS
+  const handleClearPhotoCache = async () => {
+    if (confirm('Tem certeza que deseja remover todas as fotos? Esta ação não pode ser desfeita.')) {
+      try {
+        await clearAllPhotos();
+        alert('Cache de fotos limpo com sucesso!');
+      } catch (error) {
+        console.error('❌ Erro ao limpar cache:', error);
+        alert('Erro ao limpar cache de fotos.');
+      }
+    }
+  };
+
+  // Resto das funções permanecem iguais...
+  const calculateRelevance = (person: Person): number => {
+    const proximityScore: Record<string, number> = {
+      'nucleo': 5,
+      'primeiro': 4,
+      'segundo': 3,
+      'terceiro': 2,
+      'periferia': 1
+    };
+    
+    const frequencyScore: Record<string, number> = {
+      'daily': 5,
+      'weekly': 4,
+      'monthly': 3,
+      'quarterly': 2,
+      'yearly': 1
+    };
+    
+    const pScore = proximityScore[person.proximity] || 1;
+    const iScore = person.importance || 3;
+    const fScore = person.contact_frequency ? frequencyScore[person.contact_frequency] || 2 : 2;
+    
+    return (pScore * 0.4) + (iScore * 0.3) + (fScore * 0.3);
+  };
+
+  const filteredPeople = people.filter(person => {
+    const matchesSearch = person.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         (person.occupation && person.occupation.toLowerCase().includes(searchTerm.toLowerCase())) ||
+                         (person.political_party && person.political_party.toLowerCase().includes(searchTerm.toLowerCase()));
+    const matchesContext = filterContext === 'all' || person.context === filterContext;
+    const matchesProximity = filterProximity === 'all' || person.proximity === filterProximity;
+    const matchesImportance = filterImportance === 'all' || (person.importance && person.importance.toString() === filterImportance);
+    const matchesParty = filterParty === 'all' || 
+                        (filterParty === 'sem_partido' ? !person.political_party : person.political_party === filterParty);    
+    const matchesNeighborhood = filterNeighborhood === 'all' || 
+                             (filterNeighborhood === 'sem_bairro' ? !person.neighborhood : person.neighborhood === filterNeighborhood);
+  
+    return matchesSearch && matchesContext && matchesProximity && matchesImportance && matchesParty && matchesNeighborhood;
+  });
+
+  const getContextInfo = (contextValue: string) => contexts.find(c => c.value === contextValue) || { label: '', icon: '', color: '' };
+  const getProximityInfo = (proximityValue: string) => proximityLevels.find(p => p.value === proximityValue) || { label: '', color: '' };
+
+  const openPersonProfile = (person: Person) => {
+    setSelectedPersonForProfile(person);
+    setShowProfileModal(true);
+  };
+
+  const openMediaVault = (person: Person) => {
+    setSelectedPersonForMedia(person);
+    setShowMediaVault(true);
+  };
+
+  // Verificações de autenticação
+  useEffect(() => {
+    if (status === 'loading') return;
+    if (!session) {
+      router.push('/login');
+    }
+  }, [session, status, router]);
+
+  if (status === 'loading' || peopleLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <div className="loader"></div>
+      </div>
+    );
+  }
+
+  if (!session) {
+    return null;
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
+      <div className="max-w-7xl mx-auto p-6">
+        {/* Header com botão de limpar cache */}
+        <div className="mb-8 flex justify-between items-start">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center">
+              <svg width="60" height="60" viewBox="0 0 100 100" className="text-gray-700 dark:text-white" fill="currentColor">
+                <circle cx="50" cy="20" r="8" fill="none" stroke="currentColor" strokeWidth="4"/>
+                <circle cx="20" cy="60" r="8" fill="none" stroke="currentColor" strokeWidth="4"/>
+                <circle cx="80" cy="60" r="8" fill="none" stroke="currentColor" strokeWidth="4"/>
+                <line x1="46" y1="26" x2="24" y2="54" stroke="currentColor" strokeWidth="4"/>
+                <line x1="54" y1="26" x2="76" y2="54" stroke="currentColor" strokeWidth="4"/>
+                <line x1="28" y1="60" x2="72" y2="60" stroke="currentColor" strokeWidth="4"/>
+              </svg>
+              <div className="ml-3">
+                <div className="text-sm font-semibold text-gray-700 dark:text-gray-300">nodo</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">app.br</div>
+              </div>
+            </div>
+            
+            <button
+              onClick={() => setShowMobileMenu(true)}
+              className="md:hidden p-2 rounded-lg bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+            >
+              <Menu className="w-5 h-5 text-gray-700 dark:text-gray-300" />
+            </button>
+            
+            <div className="ml-4">
+              <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+                Mapeador de Comunidade
+              </h1>
+              <p className="text-gray-600 dark:text-gray-400">
+                Sistema completo de mapeamento político e social
+              </p>
+            </div>
+          </div> 
+
+          <div className="flex items-center gap-4">
+            {mounted && (
+              <button
+                onClick={toggleTheme}
+                className="p-2 rounded-lg bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+                title={theme === 'light' ? 'Ativar modo escuro' : 'Ativar modo claro'}
+              >
+                {theme === 'light' ? (
+                  <Moon className="w-5 h-5 text-gray-700 dark:text-gray-300" />
+                ) : (
+                  <Sun className="w-5 h-5 text-yellow-500" />
+                )}
+              </button>
+            )}
+            
+            {/* 🆕 BOTÃO PARA LIMPAR CACHE DE FOTOS */}
+            <button
+              onClick={handleClearPhotoCache}
+              className="p-2 rounded-lg bg-red-100 dark:bg-red-900 hover:bg-red-200 dark:hover:bg-red-800 transition-colors"
+              title="Limpar cache de fotos"
+            >
+              <Trash2 className="w-5 h-5 text-red-600 dark:text-red-400" />
+            </button>
+            
+            <div className="text-right hidden md:block">
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                Olá, {session.user?.name || session.user?.email}
+              </p>
+              <button
+                onClick={() => signOut()}
+                className="text-sm text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 flex items-center gap-1"
+              >
+                <LogOut className="w-4 h-4" />
+                Sair
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Resto do componente permanece igual... */}
+        
+        {/* Tabela com célula de foto atualizada */}
+        {viewMode === 'table' && (
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50 dark:bg-gray-700">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Foto</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Nome</th>
+                    {/* Outras colunas... */}
+                  </tr>
+                </thead>
+                <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                  {filteredPeople.map(person => {
+                    const contextInfo = getContextInfo(person.context);
+                    const proximityInfo = getProximityInfo(person.proximity);
+                    return (
+                      <tr key={person.id} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                        {/* 🆕 CÉLULA DE FOTO ATUALIZADA */}
+                        <td className="px-6 py-4">
+                          <button
+                            onClick={() => {
+                              setSelectedPersonForPhoto(person.id);
+                              setShowPhotoModal(true);
+                            }}
+                            className="relative group"
+                            disabled={photosLoading}
+                          >
+                            {personPhotos[person.id] ? (
+                              <img
+                                src={personPhotos[person.id]}
+                                alt={person.name}
+                                className="w-10 h-10 rounded-full object-cover border-2 border-gray-200 dark:border-gray-600"
+                                onError={(e) => {
+                                  console.error('❌ Erro ao carregar thumbnail para:', person.name);
+                                  e.currentTarget.style.display = 'none';
+                                }}
+                              />
+                            ) : (
+                              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center border-2 border-gray-300 dark:border-gray-500 text-white font-semibold text-sm">
+                                {person.name.charAt(0).toUpperCase()}
+                              </div>
+                            )}
+                            
+                            {photosLoading ? (
+                              <div className="absolute inset-0 rounded-full bg-black bg-opacity-30 flex items-center justify-center">
+                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                              </div>
+                            ) : (
+                              <div className="absolute inset-0 rounded-full bg-black bg-opacity-0 group-hover:bg-opacity-30 flex items-center justify-center transition-all">
+                                <Camera className="w-4 h-4 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                              </div>
+                            )}
+                          </button>
+                        </td>
+                        
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div 
+                            className="font-medium text-gray-900 dark:text-white cursor-pointer hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                            onClick={() => openPersonProfile(person)}
+                            title="Clique para ver o perfil completo"
+                          >
+                            {person.name}
+                          </div>
+                          {person.nickname && <div className="text-sm text-gray-500 dark:text-gray-400">"{person.nickname}"</div>}
+                        </td>
+                        
+                        {/* Outras células permanecem iguais... */}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* 🆕 MODAL DE FOTO ATUALIZADO */}
+        {showPhotoModal && selectedPersonForPhoto && (
+          <PhotoUploadModal
+            isOpen={showPhotoModal}
+            onClose={() => {
+              setShowPhotoModal(false);
+              setSelectedPersonForPhoto(null);
+            }}
+            onPhotoSelect={handlePhotoUpdate}
+            currentPhoto={personPhotos[selectedPersonForPhoto] || ''}
+            personId={selectedPersonForPhoto}
+            personName={people.find(p => p.id === selectedPersonForPhoto)?.name}
+          />
+        )}
+
+        {/* Outros modais permanecem iguais... */}
+        <PersonProfileModal
+          person={selectedPersonForProfile}
+          isOpen={showProfileModal}
+          onClose={() => {
+            setShowProfileModal(false);
+            setSelectedPersonForProfile(null);
+          }}
+          onEdit={(person) => {
+            setEditingPerson(person);
+            setShowProfileModal(false);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+          onOpenMediaVault={openMediaVault}
+          personPhoto={selectedPersonForProfile ? personPhotos[selectedPersonForProfile.id] : undefined}
+          contexts={contexts}
+          proximityLevels={proximityLevels}
+          classesProfissionais={classesProfissionais}
+          partidosPoliticos={partidosPoliticos}
+          bairrosGramado={bairrosGramado}
+        />
+      </div>
+
+      {/* Estilos CSS */}
+      <style jsx>{`
+        .loader {
+          border: 3px solid rgba(0, 0, 0, 0.1);
+          border-radius: 50%;
+          border-top: 3px solid #3B82F6;
+          width: 40px;
+          height: 40px;
+          animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+
+        .dark .loader {
+          border-color: rgba(255, 255, 255, 0.1);
+          border-top-color: #60A5FA;
+        }
+
+        .animate-slideIn {
+          animation: slideIn 0.3s ease-out forwards;
+        }
+
+        @keyframes slideIn {
+          from {
+            opacity: 0;
+            transform: translateX(-20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateX(0);
+          }
+        }
+      `}</style>
+    </div>
+  );
+}

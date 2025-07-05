@@ -46,6 +46,7 @@ interface Person {
   email?: string;
   city?: string;
   state?: string;
+  neighborhood?: string;
   notes?: string;
   last_contact?: string;
   contact_frequency?: string;
@@ -106,8 +107,9 @@ const preparePersonData = (person: Partial<Person>, isNew = false) => {
     mobile: person.mobile || null,
     email: person.email || null,
     address: person.address || null,
-    city: person.city || null,
-    state: person.state || null,
+    city: person.city || 'Gramado',
+    state: person.state || 'RS',
+    neighborhood: person.neighborhood || null,
     zip_code: person.zip_code || null,
     facebook: null,
     instagram: null,
@@ -133,6 +135,7 @@ interface PersonProfileModalProps {
   proximityLevels: ProximityLevel[];
   classesProfissionais: { valor: string; label: string }[];
   partidosPoliticos: { sigla: string; nome: string; numero: string }[];
+  bairrosGramado: string[];
 }
 
 const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
@@ -146,7 +149,8 @@ const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
   contexts,
   proximityLevels,
   classesProfissionais,
-  partidosPoliticos
+  partidosPoliticos,
+  bairrosGramado
 }) => {
   if (!isOpen || !person) return null;
 
@@ -464,7 +468,7 @@ const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
           </div>
 
           {/* Endereço */}
-          {(person.address || person.city || person.state || person.zip_code) && (
+          {(person.address || person.city || person.state || person.zip_code || person.neighborhood) && (
             <div className="mt-6">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center">
                 <MapPin className="w-5 h-5 mr-2" />
@@ -472,8 +476,9 @@ const PersonProfileModal: React.FC<PersonProfileModalProps> = ({
               </h3>
               <div className="text-gray-900 dark:text-white">
                 {person.address && <p>{person.address}</p>}
-                {(person.city || person.state || person.zip_code) && (
+                {(person.neighborhood || person.city || person.state || person.zip_code) && (
                   <p>
+                    {person.neighborhood && `${person.neighborhood}, `}
                     {person.city && `${person.city}`}
                     {person.city && person.state && `, `}
                     {person.state && `${person.state}`}
@@ -579,6 +584,7 @@ export default function Page() {
   const [filterProximity, setFilterProximity] = useState('all');
   const [filterImportance, setFilterImportance] = useState('all');
   const [filterParty, setFilterParty] = useState('all');
+  const [filterNeighborhood, setFilterNeighborhood] = useState('all');
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingPerson, setEditingPerson] = useState<Person | null>(null);
   const [viewMode, setViewMode] = useState<'table' | 'circles' | 'graph' | 'dashboard' | 'political' | 'geographic' | 'demographic' | 'goals' | 'calendar'>('table');
@@ -593,6 +599,7 @@ export default function Page() {
   const [showImportWizard, setShowImportWizard] = useState(false);
   const [affiliatesData, setAffiliatesData] = useState<any[]>([]);
   const [showCustomOccupation, setShowCustomOccupation] = useState(false);
+  const [showCustomNeighborhood, setShowCustomNeighborhood] = useState(false); // 🆕 NOVO ESTADO
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [selectedPersonForProfile, setSelectedPersonForProfile] = useState<Person | null>(null);
   
@@ -627,8 +634,7 @@ export default function Page() {
       console.error('Erro ao buscar dados de filiados:', error);
     }
   };
-
-  // Adicionar contexto político
+// Adicionar contexto político
   const contexts: Context[] = [
     { value: 'residencial', label: 'Residencial', icon: '🏠', color: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' },
     { value: 'profissional', label: 'Profissional', icon: '💼', color: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' },
@@ -722,6 +728,71 @@ export default function Page() {
     { valor: 'ciencias_exatas_naturais', label: 'Ciências Exatas e Naturais' },
     { valor: 'outros', label: 'Outros' }
   ];
+
+  // 🆕 ARRAY DE BAIRROS E LOCALIDADES DE GRAMADO
+  const bairrosGramado = [
+    // Bairros Centrais
+    'Centro',
+    'Avenida Central', 
+    'Planalto',
+    'Carniel',
+    'Floresta',
+    'Jardim',
+    'Dutra',
+    'Piratini',
+    
+    // Bairros Residenciais
+    'Bavária',
+    'Bela Vista',
+    'Candiago',
+    'Carazal',
+    'Casagrande',
+    'Mato Queimado',
+    'Minuano',
+    'Monte Verde',
+    'Tirol',
+    'Três Pinheiros',
+    'Vale dos Pinheiros',
+    'Várzea Grande',
+    'Vila do Sol',
+    'Vila Suíça',
+    'Pórtico 1',
+    'Pórtico 2',
+    'Altos da Viação Férrea',
+    'Aspen',
+    
+    // Linhas (Áreas Rurais)
+    'Linha 15',
+    'Linha 28',
+    'Linha Araripe',
+    'Linha Ávila',
+    'Linha Bonita',
+    'Linha Carahá',
+    'Linha Furna',
+    'Linha Marcondes',
+    'Linha Nova',
+    'Linha Pedras Brancas',
+    'Linha Quilombo',
+    'Linha Tapera',
+    'Morro do Arame',
+    'Serra Grande',
+    'Moleque',
+    'Gambelo',
+    'Moreira',
+    
+    // Condomínios Fechados
+    'Condomínio Residencial Aspen Mountain',
+    'Condomínio Vale do Bosque',
+    'Condomínio Knorrville',
+    'Condomínio O Bosque',
+    'Condomínio Portal de Gramado',
+    'Condomínio Residencial Villa Bella',
+    'Condomínio Saint Morit',
+    'Condomínio Villaggio',    
+    'Condomínio Lagos de Gramado',
+    'Condomínio Buena Vista',
+    'Condomínio Montanha Del Fiori'
+  ].sort(); // Ordenar alfabeticamente
 
   // Array de sugestões de profissões organizadas por categoria
   const profissoesPorCategoria = {
@@ -914,7 +985,8 @@ export default function Page() {
     proximity: '',
     occupation: '',
     mobile: '',
-    city: '',
+    city: 'Gramado',
+    neighborhood: '',
     notes: '',
     last_contact: '',
     importance: 3,
@@ -1200,11 +1272,13 @@ export default function Page() {
         importance: 3,
         contact_frequency: '',
         political_party: '',
-        professional_class: ''
+        professional_class: '',
+        neighborhood: ''
       });
       
       setShowAddForm(false);
       setShowCustomOccupation(false);
+      setShowCustomNeighborhood(false); // 🆕 RESETAR BAIRRO CUSTOMIZADO
       refreshPeople();
       
     } catch (error) {
@@ -1226,6 +1300,7 @@ export default function Page() {
         await updatePersonInDb(personData);
         setEditingPerson(null);
         setShowCustomOccupation(false);
+        setShowCustomNeighborhood(false); // 🆕 RESETAR BAIRRO CUSTOMIZADO
         refreshPeople();
       } catch (error) {
         console.error('Erro ao atualizar pessoa:', error);
@@ -1252,10 +1327,12 @@ export default function Page() {
     const matchesProximity = filterProximity === 'all' || person.proximity === filterProximity;
     const matchesImportance = filterImportance === 'all' || (person.importance && person.importance.toString() === filterImportance);
     const matchesParty = filterParty === 'all' || 
-                        (filterParty === 'sem_partido' ? !person.political_party : person.political_party === filterParty);
-    
-    return matchesSearch && matchesContext && matchesProximity && matchesImportance && matchesParty;
-  });
+                        (filterParty === 'sem_partido' ? !person.political_party : person.political_party === filterParty);    
+    const matchesNeighborhood = filterNeighborhood === 'all' || 
+                             (filterNeighborhood === 'sem_bairro' ? !person.neighborhood : person.neighborhood === filterNeighborhood);
+  
+  return matchesSearch && matchesContext && matchesProximity && matchesImportance && matchesParty && matchesNeighborhood;
+});
 
   const getContextInfo = (contextValue: string) => contexts.find(c => c.value === contextValue) || { label: '', icon: '', color: '' };
   const getProximityInfo = (proximityValue: string) => proximityLevels.find(p => p.value === proximityValue) || { label: '', color: '' };
@@ -1327,8 +1404,6 @@ export default function Page() {
               </p>
             </div>
           </div> 
-
-
 
           <div className="flex items-center gap-4">
             {mounted && (
@@ -1510,6 +1585,21 @@ export default function Page() {
               ))}
             </select>
 
+            {/* 🆕 FILTRO DE BAIRRO ATUALIZADO */}
+            <select
+              value={filterNeighborhood}
+              onChange={(e) => setFilterNeighborhood(e.target.value)}
+              className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white rounded-lg px-3 py-2"
+            >
+              <option value="all">Todos os Bairros</option>
+              <option value="sem_bairro">Sem bairro informado</option>
+              {bairrosGramado.map(bairro => (
+                <option key={bairro} value={bairro}>
+                  {bairro}
+                </option>
+              ))}
+            </select>
+
             {/* Contador de resultados */}
             <div className="ml-auto text-sm text-gray-600 dark:text-gray-400">
               {filteredPeople.length} pessoa{filteredPeople.length !== 1 ? 's' : ''} encontrada{filteredPeople.length !== 1 ? 's' : ''}
@@ -1626,7 +1716,7 @@ export default function Page() {
           />
         )}
 
-        {/* Formulário de Adição/Edição com campo de profissão customizado */}
+        {/* 🆕 FORMULÁRIO DE ADIÇÃO/EDIÇÃO ATUALIZADO COM SELECT DE BAIRRO */}
         {(showAddForm || editingPerson) && (
           <div className="bg-white dark:bg-gray-800 p-6 rounded-lg mb-6 shadow-lg animate-slideIn">
             <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">
@@ -1824,6 +1914,117 @@ export default function Page() {
                 className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2"
               />
 
+              {/* 🆕 CAMPO DE BAIRRO COM SELECT CUSTOMIZADO */}
+              {showCustomNeighborhood ? (
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Digite o bairro/localidade"
+                    value={editingPerson ? editingPerson.neighborhood || '' : newPerson.neighborhood || ''}
+                    onChange={(e) => editingPerson
+                      ? setEditingPerson({...editingPerson, neighborhood: e.target.value})
+                      : setNewPerson({...newPerson, neighborhood: e.target.value})}
+                    className="flex-1 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2"
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowCustomNeighborhood(false)}
+                    className="px-3 py-2 text-sm bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-500"
+                  >
+                    Voltar
+                  </button>
+                </div>
+              ) : (
+                <select
+                  value={editingPerson ? editingPerson.neighborhood || '' : newPerson.neighborhood || ''}
+                  onChange={(e) => {
+                    if (e.target.value === 'outro') {
+                      setShowCustomNeighborhood(true);
+                      if (editingPerson) {
+                        setEditingPerson({...editingPerson, neighborhood: ''});
+                      } else {
+                        setNewPerson({...newPerson, neighborhood: ''});
+                      }
+                    } else {
+                      if (editingPerson) {
+                        setEditingPerson({...editingPerson, neighborhood: e.target.value});
+                      } else {
+                        setNewPerson({...newPerson, neighborhood: e.target.value});
+                      }
+                    }
+                  }}
+                  className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2"
+                >
+                  <option value="">Selecione um bairro</option>
+                  <optgroup label="Bairros Centrais">
+                    <option value="Centro">Centro</option>
+                    <option value="Avenida Central">Avenida Central</option>
+                    <option value="Planalto">Planalto</option>
+                    <option value="Carniel">Carniel</option>
+                    <option value="Floresta">Floresta</option>
+                    <option value="Jardim">Jardim</option>
+                    <option value="Dutra">Dutra</option>
+                    <option value="Piratini">Piratini</option>
+                  </optgroup>
+                  <optgroup label="Bairros Residenciais">
+                    <option value="Bavária">Bavária</option>
+                    <option value="Bela Vista">Bela Vista</option>
+                    <option value="Candiago">Candiago</option>
+                    <option value="Carazal">Carazal</option>
+                    <option value="Casagrande">Casagrande</option>
+                    <option value="Mato Queimado">Mato Queimado</option>
+                    <option value="Minuano">Minuano</option>
+                    <option value="Monte Verde">Monte Verde</option>
+                    <option value="Tirol">Tirol</option>
+                    <option value="Três Pinheiros">Três Pinheiros</option>
+                    <option value="Vale dos Pinheiros">Vale dos Pinheiros</option>
+                    <option value="Varzinha">Varzinha</option>
+                    <option value="Várzea Grande">Várzea Grande</option>
+                    <option value="Vila do Sol">Vila do Sol</option>
+                    <option value="Vila Suíça">Vila Suíça</option>
+                    <option value="Pórtico 1">Pórtico 1</option>
+                    <option value="Pórtico 2">Pórtico 2</option>
+                    <option value="Altos da Viação Férrea">Altos da Viação Férrea</option>
+                    <option value="Aspen">Aspen</option>
+                  </optgroup>
+                  <optgroup label="Áreas Rurais">
+                    <option value="Linha 15">Linha 15</option>
+                    <option value="Linha 28">Linha 28</option>
+                    <option value="Linha Araripe">Linha Araripe</option>
+                    <option value="Linha Ávila">Linha Ávila</option>
+                    <option value="Linha Bonita">Linha Bonita</option>
+                    <option value="Linha Carahá">Linha Carahá</option>
+                    <option value="Linha Furna">Linha Furna</option>
+                    <option value="Linha Marcondes">Linha Marcondes</option>
+                    <option value="Linha Nova">Linha Nova</option>
+                    <option value="Linha Pedras Brancas">Linha Pedras Brancas</option>
+                    <option value="Linha Quilombo">Linha Quilombo</option>
+                    <option value="Linha Tapera">Linha Tapera</option>
+                    <option value="Morro do Arame">Morro do Arame</option>
+                    <option value="Serra Grande">Serra Grande</option>
+                    <option value="Moleque">Moleque</option>
+                    <option value="Gambelo">Gambelo</option>
+                    <option value="Moreira">Moreira</option>
+                  </optgroup>
+                  <optgroup label="Condomínios Fechados">
+                    <option value="Condomínio Residencial Aspen Mountain">Condomínio Residencial Aspen Mountain</option>
+                    <option value="Condomínio Vale do Bosque">Condomínio Vale do Bosque</option>
+                    <option value="Condomínio Knorrville">Condomínio Knorrville</option>
+                    <option value="Condomínio O Bosque">Condomínio O Bosque</option>
+                    <option value="Condomínio Portal de Gramado">Condomínio Portal de Gramado</option>
+                    <option value="Condomínio Residencial Villa Bella">Condomínio Residencial Villa Bella</option>
+                    <option value="Condomínio Saint Morit">Condomínio Saint Morit</option>
+                    <option value="Condomínio Villaggio">Condomínio Villaggio</option>
+                    <option value="Condomínio Buena Vista">Condomínio Buena Vista</option>
+                    <option value="Condomínio Montanha Del Fiori">Condomínio Montanha Del Fiori</option>
+                  </optgroup>
+                  <option value="outro" className="font-semibold text-blue-600 dark:text-blue-400">
+                    ➕ Outro bairro/localidade...
+                  </option>
+                </select>
+              )}
+
               <input
                 type="date"
                 placeholder="Último contato"
@@ -1889,6 +2090,7 @@ export default function Page() {
                   setShowAddForm(false);
                   setEditingPerson(null);
                   setShowCustomOccupation(false);
+                  setShowCustomNeighborhood(false); // 🆕 RESETAR BAIRRO CUSTOMIZADO
                 }}
                 className="bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600 transition-colors"
               >
@@ -2154,10 +2356,42 @@ export default function Page() {
           <GoalsDashboard people={filteredPeople} affiliatesData={affiliatesData} />
         )}
 
-        {viewMode === 'table' && (
+       {viewMode === 'table' && (
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full">
+            {/* Scroll horizontal do topo */}
+            <div 
+              id="top-scroll"
+              className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600 scrollbar-track-transparent"
+              onScroll={(e) => {
+                const target = e.target as HTMLElement;
+                const mainScroll = document.getElementById('main-scroll');
+                if (mainScroll) {
+                  mainScroll.scrollLeft = target.scrollLeft;
+                }
+              }}
+            >
+              <div style={{ height: '1px', width: 'max-content', minWidth: '100%' }}>
+                <div style={{ width: '2500px', height: '1px' }}></div>
+              </div>
+            </div>
+            
+            {/* Container principal da tabela */}
+            <div 
+              id="main-scroll"
+              className="overflow-x-auto"
+              onScroll={(e) => {
+                const target = e.target as HTMLElement;
+                const topScroll = document.getElementById('top-scroll');
+                const bottomScroll = document.getElementById('bottom-scroll');
+                if (topScroll) {
+                  topScroll.scrollLeft = target.scrollLeft;
+                }
+                if (bottomScroll) {
+                  bottomScroll.scrollLeft = target.scrollLeft;
+                }
+              }}
+            >
+              <table className="w-full" style={{ minWidth: '2500px' }}>
                 <thead className="bg-gray-50 dark:bg-gray-700">
                   <tr>
                     <th className="px-6 py-3 w-12">
@@ -2173,6 +2407,7 @@ export default function Page() {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Contexto</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Círculo</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Profissão</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Localização</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Partido</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Contato</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Importância</th>
@@ -2236,7 +2471,10 @@ export default function Page() {
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-300">
                           {person.occupation || '-'}
                           {person.professional_class && <div className="text-xs text-gray-500 dark:text-gray-400">{classesProfissionais.find(c => c.valor === person.professional_class)?.label}</div>}
-                        </td>
+                        </td>                        
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-300">
+                          {person.neighborhood ? `${person.neighborhood}, ` : ''}{person.city || 'Gramado'}
+                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-300">
                           {person.political_party || '-'}
                         </td>
@@ -2305,8 +2543,26 @@ export default function Page() {
                 </tbody>
               </table>
             </div>
+            
+            {/* Scroll horizontal do rodapé */}
+            <div 
+              id="bottom-scroll"
+              className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600 scrollbar-track-transparent"
+              onScroll={(e) => {
+                const target = e.target as HTMLElement;
+                const mainScroll = document.getElementById('main-scroll');
+                if (mainScroll) {
+                  mainScroll.scrollLeft = target.scrollLeft;
+                }
+              }}
+            >
+              <div style={{ height: '1px', width: 'max-content', minWidth: '100%' }}>
+                <div style={{ width: '2500px', height: '1px' }}></div>
+              </div>
+            </div>
           </div>
         )}
+
 
         {viewMode === 'circles' && (
           <div className="space-y-8">
@@ -2452,7 +2708,7 @@ export default function Page() {
           onClose={() => setShowTagManager(false)}
         />
 
-        {/* Modal de Perfil - Atualizado com onOpenMediaVault */}
+        {/* 🆕 MODAL DE PERFIL ATUALIZADO COM BAIRROS */}
         <PersonProfileModal
           person={selectedPersonForProfile}
           isOpen={showProfileModal}
@@ -2471,6 +2727,7 @@ export default function Page() {
           proximityLevels={proximityLevels}
           classesProfissionais={classesProfissionais}
           partidosPoliticos={partidosPoliticos}
+          bairrosGramado={bairrosGramado}
         />
 
         {/* Modal de Acervo de Mídia */}

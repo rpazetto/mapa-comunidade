@@ -22,7 +22,8 @@ import {
   TrendingUp,
   AlertTriangle,
   Phone,
-  Gift
+  Gift,
+  X
 } from 'lucide-react';
 
 interface Person {
@@ -79,6 +80,27 @@ const PoliticalCalendar: React.FC<PoliticalCalendarProps> = ({
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
   const [filter, setFilter] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'month' | 'week' | 'agenda'>('month');
+  const [customEvents, setCustomEvents] = useState<CalendarEvent[]>([]);
+
+  // Carregar eventos customizados do localStorage
+  useEffect(() => {
+    const savedEvents = localStorage.getItem('politicalCalendarEvents');
+    if (savedEvents) {
+      try {
+        const parsedEvents = JSON.parse(savedEvents);
+        setCustomEvents(parsedEvents);
+      } catch (error) {
+        console.error('Erro ao carregar eventos salvos:', error);
+      }
+    }
+  }, []);
+
+  // Salvar eventos customizados no localStorage
+  useEffect(() => {
+    if (customEvents.length > 0) {
+      localStorage.setItem('politicalCalendarEvents', JSON.stringify(customEvents));
+    }
+  }, [customEvents]);
 
   // Deadlines eleitorais atualizados para 2025/2026
   const electoralDeadlines: ElectoralDeadline[] = [
@@ -405,7 +427,7 @@ const PoliticalCalendar: React.FC<PoliticalCalendarProps> = ({
     setEvents(prev => [...prev.filter(e => e.type !== 'birthday'), ...birthdayEvents]);
   };
 
-  // Adicionar deadlines eleitorais aos eventos (ATUALIZADO)
+  // Combinar todos os eventos (eleitorais, contatos, aniversários e customizados)
   useEffect(() => {
     const deadlineEvents: CalendarEvent[] = electoralDeadlines.map(deadline => {
       // Determinar o tipo correto baseado no tipo do deadline
@@ -428,15 +450,17 @@ const PoliticalCalendar: React.FC<PoliticalCalendarProps> = ({
     });
 
     console.log('📅 Adicionando eventos eleitorais:', deadlineEvents.length);
+    console.log('📅 Eventos customizados:', customEvents.length);
+    
     setEvents(prev => {
-      // Remover eventos eleitorais antigos
+      // Remover eventos eleitorais antigos e customizados antigos
       const nonElectoralEvents = prev.filter(e => 
-        !['deadline', 'election', 'window', 'campaign', 'conference'].includes(e.type) || 
-        e.personId // Manter eventos que têm personId (são de pessoas específicas)
+        (e.type === 'contact' || e.type === 'birthday') && e.personId
       );
-      return [...nonElectoralEvents, ...deadlineEvents];
+      // Combinar com eventos eleitorais e customizados
+      return [...nonElectoralEvents, ...deadlineEvents, ...customEvents];
     });
-  }, []); // Array vazio para executar apenas uma vez
+  }, [customEvents]); // Adicionar customEvents como dependência
 
   // Funções do calendário
   const getDaysInMonth = (date: Date) => {
@@ -524,6 +548,22 @@ const PoliticalCalendar: React.FC<PoliticalCalendarProps> = ({
 
   const handleDateClick = (date: Date) => {
     setSelectedDate(date);
+  };
+
+  const handleEventClick = (event: CalendarEvent) => {
+    setEditingEvent(event);
+    setShowEventModal(true);
+  };
+
+  const handleDeleteEvent = (eventId: string) => {
+    if (window.confirm('Tem certeza que deseja deletar este evento?')) {
+      // Remover dos eventos customizados
+      setCustomEvents(prev => prev.filter(e => e.id !== eventId));
+      // Remover da lista geral de eventos
+      setEvents(prev => prev.filter(e => e.id !== eventId));
+      setShowEventModal(false);
+      setEditingEvent(null);
+    }
   };
 
   const getEventColor = (event: CalendarEvent) => {
@@ -715,7 +755,11 @@ const PoliticalCalendar: React.FC<PoliticalCalendarProps> = ({
                         {day.events.slice(0, 3).map((event, idx) => (
                           <div
                             key={idx}
-                            className={`text-xs p-1 rounded ${getEventColor(event)} text-white truncate flex items-center`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleEventClick(event);
+                            }}
+                            className={`text-xs p-1 rounded ${getEventColor(event)} text-white truncate flex items-center cursor-pointer hover:opacity-80`}
                           >
                             {getEventIcon(event.type)}
                             <span className="ml-1">{event.title}</span>
@@ -744,7 +788,8 @@ const PoliticalCalendar: React.FC<PoliticalCalendarProps> = ({
                 return (
                   <div
                     key={event.id}
-                    className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700 rounded-lg"
+                    onClick={() => handleEventClick(event)}
+                    className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600"
                   >
                     <div className="flex items-center space-x-3">
                       <div className={`p-2 rounded-lg ${getEventColor(event)} text-white`}>
@@ -764,13 +809,19 @@ const PoliticalCalendar: React.FC<PoliticalCalendarProps> = ({
                     {person && (
                       <div className="flex items-center space-x-2">
                         <button
-                          onClick={() => onContactPerson?.(person)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onContactPerson?.(person);
+                          }}
                           className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
                         >
                           <Phone className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => onEditPerson?.(person)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onEditPerson?.(person);
+                          }}
                           className="text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-300"
                         >
                           <Edit className="w-4 h-4" />
@@ -959,7 +1010,11 @@ const PoliticalCalendar: React.FC<PoliticalCalendarProps> = ({
               getEventsForDate(selectedDate).map(event => {
                 const person = people.find(p => p.id === event.personId);
                 return (
-                  <div key={event.id} className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 rounded-lg">
+                  <div 
+                    key={event.id} 
+                    onClick={() => handleEventClick(event)}
+                    className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700"
+                  >
                     <div className="flex items-center space-x-3">
                       <div className={`p-2 rounded ${getEventColor(event)} text-white`}>
                         {getEventIcon(event.type)}
@@ -974,7 +1029,10 @@ const PoliticalCalendar: React.FC<PoliticalCalendarProps> = ({
                     {person && (
                       <div className="flex items-center space-x-2">
                         <button
-                          onClick={() => onContactPerson?.(person)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onContactPerson?.(person);
+                          }}
                           className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
                         >
                           <Phone className="w-4 h-4" />
@@ -987,6 +1045,199 @@ const PoliticalCalendar: React.FC<PoliticalCalendarProps> = ({
             ) : (
               <p className="text-gray-500 dark:text-gray-400">Nenhum evento neste dia</p>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Novo Evento/Editar Evento */}
+      {showEventModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white">
+                {editingEvent ? 'Editar Evento' : 'Novo Evento'}
+              </h3>
+              <button
+                onClick={() => {
+                  setShowEventModal(false);
+                  setEditingEvent(null);
+                }}
+                className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              // Implementar lógica de salvar evento
+              const formData = new FormData(e.currentTarget);
+              const newEvent: CalendarEvent = {
+                id: editingEvent?.id || `event-${Date.now()}`,
+                title: formData.get('title') as string,
+                date: formData.get('date') as string,
+                type: formData.get('type') as CalendarEvent['type'],
+                personId: formData.get('personId') as string || undefined,
+                description: formData.get('description') as string || undefined,
+                priority: formData.get('priority') as CalendarEvent['priority'],
+                status: 'pending',
+                reminder: parseInt(formData.get('reminder') as string) || undefined
+              };
+              
+              if (editingEvent) {
+                // Atualizar evento existente
+                setCustomEvents(prev => prev.map(e => e.id === newEvent.id ? newEvent : e));
+                setEvents(prev => prev.map(e => e.id === newEvent.id ? newEvent : e));
+              } else {
+                // Adicionar novo evento
+                setCustomEvents(prev => [...prev, newEvent]);
+                setEvents(prev => [...prev, newEvent]);
+              }
+              
+              setShowEventModal(false);
+              setEditingEvent(null);
+            }}>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Título do Evento *
+                  </label>
+                  <input
+                    type="text"
+                    name="title"
+                    defaultValue={editingEvent?.title}
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    placeholder="Ex: Reunião com vereadores"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Data *
+                  </label>
+                  <input
+                    type="date"
+                    name="date"
+                    defaultValue={editingEvent?.date || new Date().toISOString().split('T')[0]}
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Tipo de Evento *
+                  </label>
+                  <select
+                    name="type"
+                    defaultValue={editingEvent?.type || 'meeting'}
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  >
+                    <option value="meeting">Reunião</option>
+                    <option value="contact">Contato</option>
+                    <option value="birthday">Aniversário</option>
+                    <option value="deadline">Prazo</option>
+                    <option value="election">Eleição</option>
+                    <option value="window">Janela Partidária</option>
+                    <option value="conference">Conferência/Evento</option>
+                    <option value="campaign">Campanha</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Pessoa Relacionada
+                  </label>
+                  <select
+                    name="personId"
+                    defaultValue={editingEvent?.personId || ''}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  >
+                    <option value="">Nenhuma pessoa específica</option>
+                    {people.map(person => (
+                      <option key={person.id} value={person.id}>
+                        {person.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Prioridade *
+                  </label>
+                  <select
+                    name="priority"
+                    defaultValue={editingEvent?.priority || 'medium'}
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  >
+                    <option value="low">Baixa</option>
+                    <option value="medium">Média</option>
+                    <option value="high">Alta</option>
+                    <option value="critical">Crítica</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Lembrete (dias antes)
+                  </label>
+                  <input
+                    type="number"
+                    name="reminder"
+                    defaultValue={editingEvent?.reminder || 1}
+                    min="0"
+                    max="30"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Descrição
+                  </label>
+                  <textarea
+                    name="description"
+                    defaultValue={editingEvent?.description}
+                    rows={3}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    placeholder="Detalhes adicionais sobre o evento..."
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end space-x-3 mt-6">
+                {editingEvent && (
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteEvent(editingEvent.id)}
+                    className="px-4 py-2 text-red-700 dark:text-red-300 bg-red-100 dark:bg-red-900/20 rounded-lg hover:bg-red-200 dark:hover:bg-red-900/40"
+                  >
+                    <Trash2 className="w-4 h-4 inline mr-2" />
+                    Deletar
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowEventModal(false);
+                    setEditingEvent(null);
+                  }}
+                  className="px-4 py-2 text-gray-700 dark:text-gray-300 bg-gray-200 dark:bg-gray-700 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                >
+                  {editingEvent ? 'Atualizar' : 'Criar Evento'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

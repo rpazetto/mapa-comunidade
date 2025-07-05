@@ -178,12 +178,50 @@ export async function getUserById(id: number): Promise<User | null> {
 // === PEOPLE ===
 export async function getPeopleByUserId(userId: number): Promise<Person[]> {
   try {
-    const [rows] = await pool.execute(
-      'SELECT * FROM people WHERE user_id = ? ORDER BY name',
+    // Primeiro, verificar se o usuário é administrativo
+    const [userRows] = await pool.execute(
+      'SELECT email FROM users WHERE id = ?',
       [userId]
     );
     
-    return rows as Person[];
+    const userResult = userRows as any[];
+    
+    if (userResult.length === 0) {
+      console.log('Usuário não encontrado:', userId);
+      return [];
+    }
+    
+    const userEmail = userResult[0].email;
+    
+    // Verificar se é usuário administrativo
+    const isAdmin = userEmail.includes('admin') || 
+                   userEmail.includes('gerente') || 
+                   userEmail.includes('super');
+    
+    console.log(`Usuário ${userEmail} ${isAdmin ? 'É ADMIN' : 'é usuário comum'}`);
+    
+    // Query e parâmetros diferentes para admins
+    let query: string;
+    let params: any[];
+    
+    if (isAdmin) {
+      // Admins veem TODAS as pessoas
+      query = 'SELECT * FROM people ORDER BY name';
+      params = [];
+      console.log('Admin: buscando TODAS as pessoas');
+    } else {
+      // Usuários comuns veem apenas suas pessoas
+      query = 'SELECT * FROM people WHERE user_id = ? ORDER BY name';
+      params = [userId];
+      console.log(`Usuário comum: buscando pessoas do user_id ${userId}`);
+    }
+    
+    const [rows] = await pool.execute(query, params);
+    
+    const people = rows as Person[];
+    console.log(`Retornando ${people.length} pessoas para o usuário ${userEmail}`);
+    
+    return people;
   } catch (error) {
     console.error('Erro ao buscar pessoas:', error);
     return [];

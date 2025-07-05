@@ -61,14 +61,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 });
     }
 
-    // Preparar dados para criação com valores padrão para Gramado/RS
+    // Preparar dados para criação
     const personData: Partial<Person> = {
       ...body,
       user_id: user.id,
-      // 🏠 Valores padrão para localização
-      city: body.city || 'Gramado',
-      state: body.state || 'RS',
-      neighborhood: body.neighborhood || null,
       // Garantir que campos booleanos sejam tratados corretamente
       is_candidate: body.is_candidate || false,
       is_elected: body.is_elected || false,
@@ -137,16 +133,8 @@ export async function PUT(request: NextRequest) {
     // Preparar dados para atualização (removendo campos que não devem ser atualizados)
     const { id, user_id, created_at, updated_at, ...updateData } = body;
     
-    // 🏠 Garantir valores padrão para localização na atualização também
-    const processedUpdateData = {
-      ...updateData,
-      city: updateData.city || 'Gramado',
-      state: updateData.state || 'RS',
-      neighborhood: updateData.neighborhood || null,
-    };
-    
     // Atualizar pessoa
-    const success = await updatePerson(personId, processedUpdateData);
+    const success = await updatePerson(personId, updateData);
     
     if (!success) {
       return NextResponse.json({ error: 'Erro ao atualizar pessoa' }, { status: 500 });

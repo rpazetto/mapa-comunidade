@@ -46,6 +46,7 @@ interface Person {
   email?: string;
   city?: string;
   state?: string;
+  neighborhood?: string; // 🆕 ADICIONAR ESTA LINHA
   notes?: string;
   last_contact?: string;
   contact_frequency?: string;
@@ -106,8 +107,9 @@ const preparePersonData = (person: Partial<Person>, isNew = false) => {
     mobile: person.mobile || null,
     email: person.email || null,
     address: person.address || null,
-    city: person.city || null,
-    state: person.state || null,
+    city: person.city || 'Gramado',
+    state: person.state || 'RS',
+    neighborhood: person.neighborhood || null,
     zip_code: person.zip_code || null,
     facebook: null,
     instagram: null,
@@ -579,6 +581,7 @@ export default function Page() {
   const [filterProximity, setFilterProximity] = useState('all');
   const [filterImportance, setFilterImportance] = useState('all');
   const [filterParty, setFilterParty] = useState('all');
+  const [filterNeighborhood, setFilterNeighborhood] = useState('all');
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingPerson, setEditingPerson] = useState<Person | null>(null);
   const [viewMode, setViewMode] = useState<'table' | 'circles' | 'graph' | 'dashboard' | 'political' | 'geographic' | 'demographic' | 'goals' | 'calendar'>('table');
@@ -914,7 +917,8 @@ export default function Page() {
     proximity: '',
     occupation: '',
     mobile: '',
-    city: '',
+    city: 'Gramado',
+    neighborhood: '',
     notes: '',
     last_contact: '',
     importance: 3,
@@ -1252,10 +1256,12 @@ export default function Page() {
     const matchesProximity = filterProximity === 'all' || person.proximity === filterProximity;
     const matchesImportance = filterImportance === 'all' || (person.importance && person.importance.toString() === filterImportance);
     const matchesParty = filterParty === 'all' || 
-                        (filterParty === 'sem_partido' ? !person.political_party : person.political_party === filterParty);
-    
-    return matchesSearch && matchesContext && matchesProximity && matchesImportance && matchesParty;
-  });
+                        (filterParty === 'sem_partido' ? !person.political_party : person.political_party === filterParty);    
+    const matchesNeighborhood = filterNeighborhood === 'all' || 
+                             (filterNeighborhood === 'sem_bairro' ? !person.neighborhood : person.neighborhood === filterNeighborhood);
+  
+  return matchesSearch && matchesContext && matchesProximity && matchesImportance && matchesParty && matchesNeighborhood; // 🆕 ADICIONAR && matchesNeighborhood
+});
 
   const getContextInfo = (contextValue: string) => contexts.find(c => c.value === contextValue) || { label: '', icon: '', color: '' };
   const getProximityInfo = (proximityValue: string) => proximityLevels.find(p => p.value === proximityValue) || { label: '', color: '' };
@@ -1509,6 +1515,22 @@ export default function Page() {
                 </option>
               ))}
             </select>
+
+{/* 🆕 NOVO FILTRO DE BAIRRO */}
+<select
+  value={filterNeighborhood}
+  onChange={(e) => setFilterNeighborhood(e.target.value)}
+  className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white rounded-lg px-3 py-2"
+>
+  <option value="all">Todos os Bairros</option>
+  <option value="sem_bairro">Sem bairro informado</option>
+  {[...new Set(people.filter(p => p.neighborhood).map(p => p.neighborhood))].sort().map(neighborhood => (
+    <option key={neighborhood} value={neighborhood}>
+      {neighborhood}
+    </option>
+  ))}
+</select>
+
 
             {/* Contador de resultados */}
             <div className="ml-auto text-sm text-gray-600 dark:text-gray-400">
@@ -1823,6 +1845,16 @@ export default function Page() {
                   : setNewPerson({...newPerson, city: e.target.value})}
                 className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2"
               />
+
+<input
+  type="text"
+  placeholder="Bairro"
+  value={editingPerson ? editingPerson.neighborhood || '' : newPerson.neighborhood || ''}
+  onChange={(e) => editingPerson
+    ? setEditingPerson({...editingPerson, neighborhood: e.target.value})
+    : setNewPerson({...newPerson, neighborhood: e.target.value})}
+  className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2"
+/>
 
               <input
                 type="date"
@@ -2173,6 +2205,7 @@ export default function Page() {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Contexto</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Círculo</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Profissão</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Localização</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Partido</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Contato</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Importância</th>
@@ -2236,7 +2269,10 @@ export default function Page() {
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-300">
                           {person.occupation || '-'}
                           {person.professional_class && <div className="text-xs text-gray-500 dark:text-gray-400">{classesProfissionais.find(c => c.valor === person.professional_class)?.label}</div>}
-                        </td>
+                        </td>                        
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-300">
+                          {person.neighborhood ? `${person.neighborhood}, ` : ''}{person.city || 'Gramado'}
+                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-300">
                           {person.political_party || '-'}
                         </td>

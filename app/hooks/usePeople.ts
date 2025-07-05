@@ -20,6 +20,7 @@ interface Person {
   email?: string;
   city?: string;
   state?: string;
+  neighborhood?: string;
   notes?: string;
   last_contact?: string;
   contact_frequency?: string;
@@ -31,130 +32,226 @@ interface Person {
   political_role?: string;
   is_candidate?: boolean;
   is_elected?: boolean;
+  photo_url?: string; // 🆕 Campo para URL da foto
 }
 
-export function usePeople() {
+export const usePeople = () => {
   const [people, setPeople] = useState<Person[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Buscar pessoas do banco
+  // Função para buscar pessoas
   const fetchPeople = async () => {
     try {
       setLoading(true);
       setError(null);
       
-      const response = await fetch('/api/people');
+      const response = await fetch('/api/people', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        cache: 'no-cache'
+      });
       
-      // Melhor tratamento de erro
       if (!response.ok) {
-        const errorData = await response.json().catch(() => null);
-        const errorMessage = errorData?.error || `Erro HTTP: ${response.status} ${response.statusText}`;
-        console.error('Erro ao buscar pessoas:', errorMessage);
-        throw new Error(errorMessage);
+        throw new Error(`Erro HTTP: ${response.status}`);
       }
       
       const data = await response.json();
       
-      // Garantir que data é um array
-      if (Array.isArray(data)) {
+      if (data.success && Array.isArray(data.people)) {
+        setPeople(data.people);
+      } else if (Array.isArray(data)) {
         setPeople(data);
       } else {
-        console.error('Resposta inválida da API:', data);
-        setPeople([]);
+        throw new Error('Formato de dados inválido');
       }
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Erro ao carregar pessoas';
-      setError(errorMessage);
-      console.error('Erro em fetchPeople:', err);
-      setPeople([]); // Garantir array vazio em caso de erro
+      console.error('Erro ao buscar pessoas:', err);
+      setError(err instanceof Error ? err.message : 'Erro desconhecido');
+      setPeople([]);
     } finally {
       setLoading(false);
     }
   };
 
-  // Adicionar pessoa
-  const addPerson = async (person: Omit<Person, 'id'>) => {
+  // Função para adicionar pessoa
+  const addPerson = async (personData: Omit<Person, 'id'>) => {
     try {
+      setError(null);
+      
+      // Validar dados obrigatórios
+      if (!personData.name || !personData.context || !personData.proximity) {
+        throw new Error('Nome, contexto e proximidade são obrigatórios');
+      }
+
+      // Preparar dados para envio
+      const dataToSend = {
+        ...personData,
+        // Garantir valores padrão
+        importance: personData.importance || 3,
+        trust_level: personData.trust_level || 3,
+        influence_level: personData.influence_level || 3,
+        city: personData.city || 'Gramado',
+        state: personData.state || 'RS',
+        gender: personData.gender || 'N',
+        is_candidate: Boolean(personData.is_candidate),
+        is_elected: Boolean(personData.is_elected),
+        // Converter strings vazias para null
+        nickname: personData.nickname || null,
+        birth_date: personData.birth_date || null,
+        occupation: personData.occupation || null,
+        company: personData.company || null,
+        position: personData.position || null,
+        professional_class: personData.professional_class || null,
+        political_party: personData.political_party || null,
+        political_position: personData.political_position || null,
+        political_role: personData.political_role || null,
+        phone: personData.phone || null,
+        mobile: personData.mobile || null,
+        email: personData.email || null,
+        address: personData.address || null,
+        neighborhood: personData.neighborhood || null,
+        zip_code: personData.zip_code || null,
+        whatsapp: personData.whatsapp || null,
+        notes: personData.notes || null,
+        last_contact: personData.last_contact || null,
+        contact_frequency: personData.contact_frequency || null,
+        photo_url: personData.photo_url || null
+      };
+
       const response = await fetch('/api/people', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(person)
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(dataToSend),
       });
-      
+
       const responseData = await response.json();
-      
+
       if (!response.ok) {
-        console.error('Erro da API:', responseData);
-        const errorMessage = responseData.error || responseData.message || 'Failed to create';
-        throw new Error(errorMessage);
+        throw new Error(responseData.error || `Erro HTTP: ${response.status}`);
       }
-      
-      // Recarregar todas as pessoas para garantir sincronização
+
+      // Recarregar lista
       await fetchPeople();
       return responseData;
+      
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Erro ao adicionar pessoa';
-      setError(errorMessage);
-      console.error('Erro completo:', err);
+      console.error('Erro ao adicionar pessoa:', err);
+      setError(err instanceof Error ? err.message : 'Erro ao adicionar pessoa');
       throw err;
     }
   };
 
-  // Atualizar pessoa
-  const updatePerson = async (person: Person) => {
+  // Função para atualizar pessoa
+  const updatePerson = async (personData: Person) => {
     try {
-      console.log('Atualizando pessoa:', person);
+      setError(null);
       
+      if (!personData.id) {
+        throw new Error('ID da pessoa é obrigatório para atualização');
+      }
+
+      // Preparar dados para envio (mesmo processo do addPerson)
+      const dataToSend = {
+        ...personData,
+        // Garantir valores padrão
+        importance: personData.importance || 3,
+        trust_level: personData.trust_level || 3,
+        influence_level: personData.influence_level || 3,
+        city: personData.city || 'Gramado',
+        state: personData.state || 'RS',
+        gender: personData.gender || 'N',
+        is_candidate: Boolean(personData.is_candidate),
+        is_elected: Boolean(personData.is_elected),
+        // Converter strings vazias para null
+        nickname: personData.nickname || null,
+        birth_date: personData.birth_date || null,
+        occupation: personData.occupation || null,
+        company: personData.company || null,
+        position: personData.position || null,
+        professional_class: personData.professional_class || null,
+        political_party: personData.political_party || null,
+        political_position: personData.political_position || null,
+        political_role: personData.political_role || null,
+        phone: personData.phone || null,
+        mobile: personData.mobile || null,
+        email: personData.email || null,
+        address: personData.address || null,
+        neighborhood: personData.neighborhood || null,
+        zip_code: personData.zip_code || null,
+        whatsapp: personData.whatsapp || null,
+        notes: personData.notes || null,
+        last_contact: personData.last_contact || null,
+        contact_frequency: personData.contact_frequency || null,
+        photo_url: personData.photo_url || null
+      };
+
       const response = await fetch('/api/people', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...person,
-          // Garantir que o ID é enviado corretamente
-          id: typeof person.id === 'string' ? parseInt(person.id) : person.id
-        })
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(dataToSend),
       });
-      
+
       const responseData = await response.json();
-      
+
       if (!response.ok) {
-        console.error('Erro da API:', responseData);
-        throw new Error(responseData.error || 'Failed to update');
+        throw new Error(responseData.error || `Erro HTTP: ${response.status}`);
       }
-      
-      // Recarregar todas as pessoas para garantir sincronização
+
+      // Recarregar lista
       await fetchPeople();
       return responseData;
+      
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Erro ao atualizar pessoa';
-      setError(errorMessage);
-      console.error('Erro ao atualizar:', err);
+      console.error('Erro ao atualizar pessoa:', err);
+      setError(err instanceof Error ? err.message : 'Erro ao atualizar pessoa');
       throw err;
     }
   };
 
-  // Deletar pessoa
-  const deletePerson = async (id: string) => {
+  // Função para deletar pessoa
+  const deletePerson = async (personId: string) => {
     try {
-      const response = await fetch(`/api/people?id=${id}`, {
-        method: 'DELETE'
-      });
+      setError(null);
       
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to delete');
+      if (!personId) {
+        throw new Error('ID da pessoa é obrigatório');
       }
-      
-      // Recarregar todas as pessoas
+
+      const response = await fetch(`/api/people?id=${personId}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const responseData = await response.json();
+        throw new Error(responseData.error || `Erro HTTP: ${response.status}`);
+      }
+
+      // Recarregar lista
       await fetchPeople();
+      
     } catch (err) {
-      setError('Erro ao deletar pessoa');
-      console.error(err);
+      console.error('Erro ao deletar pessoa:', err);
+      setError(err instanceof Error ? err.message : 'Erro ao deletar pessoa');
       throw err;
     }
   };
 
+  // Função para recarregar dados
+  const refreshPeople = async () => {
+    await fetchPeople();
+  };
+
+  // Carregar dados na inicialização
   useEffect(() => {
     fetchPeople();
   }, []);
@@ -166,6 +263,6 @@ export function usePeople() {
     addPerson,
     updatePerson,
     deletePerson,
-    refreshPeople: fetchPeople
+    refreshPeople,
   };
-}
+};
