@@ -1,45 +1,61 @@
 import mysql from 'mysql2/promise';
 
-// Logs de debug
-console.log('Database configuration:', {
-  railwayEnv: process.env.RAILWAY_ENVIRONMENT,
-  nodeEnv: process.env.NODE_ENV,
-  mysqlHost: process.env.MYSQL_HOST,
-  mysqlPassword: !!process.env.MYSQL_PASSWORD
-});
+// Debug logs
+console.log('=== Database Configuration Debug ===');
+console.log('RAILWAY_ENVIRONMENT:', process.env.RAILWAY_ENVIRONMENT);
+console.log('NODE_ENV:', process.env.NODE_ENV);
+console.log('DATABASE_URL_CM exists:', !!process.env.DATABASE_URL_CM);
+console.log('DATABASE_URL_MC exists:', !!process.env.DATABASE_URL_MC);
+console.log('MYSQL_HOST:', process.env.MYSQL_HOST);
 
-// Configuração para Railway
-const isRailway = process.env.RAILWAY_ENVIRONMENT === 'production' || process.env.NODE_ENV === 'production';
+// Tentar usar DATABASE_URL primeiro
+if (process.env.DATABASE_URL_CM && process.env.DATABASE_URL_MC) {
+  console.log('Using DATABASE_URL configuration');
+  
+  export const dbCM = mysql.createPool(process.env.DATABASE_URL_CM);
+  export const dbMC = mysql.createPool(process.env.DATABASE_URL_MC);
+  
+} else {
+  console.log('Using individual connection parameters');
+  
+  // Configuração para Railway
+  const isProduction = process.env.NODE_ENV === 'production';
+  
+  const dbConfigCM = {
+    host: isProduction ? 'mysql' : 'interchange.proxy.rlwy.net',
+    port: isProduction ? 3306 : 47165,
+    user: 'root',
+    password: process.env.MYSQL_PASSWORD || 'tfsriTGGWosBoJrJCEyUCCjISxLiQzfA',
+    database: 'community_mapper',
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0
+  };
 
-const dbConfigCM = {
-  host: isRailway ? 'mysql' : 'interchange.proxy.rlwy.net',
-  port: isRailway ? 3306 : 47165,
-  user: 'root',
-  password: process.env.MYSQL_PASSWORD || 'tfsriTGGWosBoJrJCEyUCCjISxLiQzfA',
-  database: 'community_mapper',
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0
-};
+  const dbConfigMC = {
+    host: isProduction ? 'mysql' : 'interchange.proxy.rlwy.net',
+    port: isProduction ? 3306 : 47165,
+    user: 'root',
+    password: process.env.MYSQL_PASSWORD || 'tfsriTGGWosBoJrJCEyUCCjISxLiQzfA',
+    database: 'mapa_comunidade',
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0
+  };
 
-const dbConfigMC = {
-  host: isRailway ? 'mysql' : 'interchange.proxy.rlwy.net',
-  port: isRailway ? 3306 : 47165,
-  user: 'root',
-  password: process.env.MYSQL_PASSWORD || 'tfsriTGGWosBoJrJCEyUCCjISxLiQzfA',
-  database: 'mapa_comunidade',
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0
-};
+  console.log('CM Config:', { host: dbConfigCM.host, port: dbConfigCM.port, db: dbConfigCM.database });
+  console.log('MC Config:', { host: dbConfigMC.host, port: dbConfigMC.port, db: dbConfigMC.database });
 
-console.log('Database configs:', {
-  cm: { host: dbConfigCM.host, port: dbConfigCM.port, database: dbConfigCM.database },
-  mc: { host: dbConfigMC.host, port: dbConfigMC.port, database: dbConfigMC.database }
-});
+  export const dbCM = mysql.createPool(dbConfigCM);
+  export const dbMC = mysql.createPool(dbConfigMC);
+}
 
-export const dbCM = mysql.createPool(dbConfigCM);
-export const dbMC = mysql.createPool(dbConfigMC);
+// Função query genérica
+export async function query(sql: string, params?: any[], database: 'cm' | 'mc' = 'cm') {
+  const pool = database === 'cm' ? dbCM : dbMC;
+  const [results] = await pool.execute(sql, params);
+  return results;
+}
 
 // Interface User
 interface User {
@@ -78,14 +94,7 @@ export async function getUserByEmail(email: string): Promise<User | null> {
   }
 }
 
-// Função query genérica
-export async function query(sql: string, params?: any[], database: 'cm' | 'mc' = 'cm') {
-  const pool = database === 'cm' ? dbCM : dbMC;
-  const [results] = await pool.execute(sql, params);
-  return results;
-}
-
-// Adicionar as outras funções que estavam no arquivo...
+// Outras funções necessárias
 export async function getPersonById(id: string) {
   try {
     const [rows] = await dbCM.execute(
