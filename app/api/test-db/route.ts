@@ -11,7 +11,7 @@ export async function GET() {
     const [rows] = await dbCM.execute('SELECT COUNT(*) as count FROM people');
     results.community_mapper.connected = true;
     results.community_mapper.data = rows[0];
-  } catch (error) {
+  } catch (error: any) {
     results.community_mapper.error = error.message;
   }
 
@@ -20,7 +20,7 @@ export async function GET() {
     const [rows] = await dbMC.execute('SELECT COUNT(*) as count FROM people');
     results.mapa_comunidade.connected = true;
     results.mapa_comunidade.data = rows[0];
-  } catch (error) {
+  } catch (error: any) {
     results.mapa_comunidade.error = error.message;
   }
 

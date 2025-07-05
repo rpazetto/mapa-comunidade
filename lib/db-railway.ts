@@ -1,10 +1,18 @@
 import mysql from 'mysql2/promise';
 
+// Logs de debug
+console.log('Database configuration:', {
+  railwayEnv: process.env.RAILWAY_ENVIRONMENT,
+  nodeEnv: process.env.NODE_ENV,
+  mysqlHost: process.env.MYSQL_HOST,
+  mysqlPassword: !!process.env.MYSQL_PASSWORD
+});
+
 // Configuração para Railway
-const isRailway = process.env.RAILWAY_ENVIRONMENT === 'production';
+const isRailway = process.env.RAILWAY_ENVIRONMENT === 'production' || process.env.NODE_ENV === 'production';
 
 const dbConfigCM = {
-  host: isRailway ? 'mysql.railway.internal' : 'interchange.proxy.rlwy.net',
+  host: isRailway ? 'mysql' : 'interchange.proxy.rlwy.net',
   port: isRailway ? 3306 : 47165,
   user: 'root',
   password: process.env.MYSQL_PASSWORD || 'tfsriTGGWosBoJrJCEyUCCjISxLiQzfA',
@@ -15,7 +23,7 @@ const dbConfigCM = {
 };
 
 const dbConfigMC = {
-  host: isRailway ? 'mysql.railway.internal' : 'interchange.proxy.rlwy.net',
+  host: isRailway ? 'mysql' : 'interchange.proxy.rlwy.net',
   port: isRailway ? 3306 : 47165,
   user: 'root',
   password: process.env.MYSQL_PASSWORD || 'tfsriTGGWosBoJrJCEyUCCjISxLiQzfA',
@@ -25,18 +33,13 @@ const dbConfigMC = {
   queueLimit: 0
 };
 
+console.log('Database configs:', {
+  cm: { host: dbConfigCM.host, port: dbConfigCM.port, database: dbConfigCM.database },
+  mc: { host: dbConfigMC.host, port: dbConfigMC.port, database: dbConfigMC.database }
+});
+
 export const dbCM = mysql.createPool(dbConfigCM);
 export const dbMC = mysql.createPool(dbConfigMC);
-
-// Função query genérica para compatibilidade
-export async function query(sql: string, params?: any[], database: 'cm' | 'mc' = 'cm') {
-  const pool = database === 'cm' ? dbCM : dbMC;
-  const [results] = await pool.execute(sql, params);
-  return results;
-}
-
-// Exportar pools individuais também
-export { dbCM as poolCM, dbMC as poolMC };
 
 // Interface User
 interface User {
@@ -47,8 +50,42 @@ interface User {
 }
 
 // Função para buscar usuário por email
+export async function getUserByEmail(email: string): Promise<User | null> {
+  try {
+    const [rows] = await dbCM.execute(
+      'SELECT id, email, name, password_hash as password FROM users WHERE email = ?',
+      [email]
+    );
+    
+    const users = rows as any[];
+    
+    if (users.length === 0) {
+      console.log('Usuário não encontrado:', email);
+      return null;
+    }
+    
+    const user = {
+      id: users[0].id.toString(),
+      email: users[0].email,
+      name: users[0].name,
+      password: users[0].password
+    };
+    
+    return user;
+  } catch (error) {
+    console.error('Erro ao buscar usuário:', error);
+    return null;
+  }
+}
 
-// Funções para tags
+// Função query genérica
+export async function query(sql: string, params?: any[], database: 'cm' | 'mc' = 'cm') {
+  const pool = database === 'cm' ? dbCM : dbMC;
+  const [results] = await pool.execute(sql, params);
+  return results;
+}
+
+// Adicionar as outras funções que estavam no arquivo...
 export async function getPersonById(id: string) {
   try {
     const [rows] = await dbCM.execute(
@@ -152,3 +189,6 @@ export async function deleteTag(id: string) {
     return false;
   }
 }
+
+// Re-exportar funções do dba.ts
+export * from './dba';
