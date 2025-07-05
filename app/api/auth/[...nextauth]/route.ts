@@ -1,10 +1,10 @@
-import NextAuth from 'next-auth'
-import type { NextAuthOptions } from 'next-auth'
-import CredentialsProvider from 'next-auth/providers/credentials'
-import bcrypt from 'bcryptjs'
-import { getUserByEmail } from '@/lib/db'
+import NextAuth from 'next-auth';
+import { NextAuthOptions } from 'next-auth';
+import CredentialsProvider from 'next-auth/providers/credentials';
+import bcrypt from 'bcryptjs';
+import { getUserByEmail } from '@/lib/db';
 
-export const authOptions: NextAuthOptions = {
+const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
       name: 'credentials',
@@ -13,59 +13,30 @@ export const authOptions: NextAuthOptions = {
         password: { label: "Senha", type: "password" }
       },
       async authorize(credentials) {
-        console.log('=== TENTATIVA DE LOGIN ===');
-        console.log('Credenciais recebidas:', { 
-          email: credentials?.email, 
-          passwordLength: credentials?.password?.length 
-        });
-
         if (!credentials?.email || !credentials?.password) {
-          console.log('❌ Credenciais faltando');
-          return null
+          return null;
         }
 
         try {
-          const user = await getUserByEmail(credentials.email)
+          const user = await getUserByEmail(credentials.email);
           
-          console.log('Usuário retornado do banco:', user ? {
-            id: user.id,
-            email: user.email,
-            name: user.name,
-            hasPassword: !!user.password,
-            passwordLength: user.password ? user.password.length : 0
-          } : 'null');
-          
-          if (!user) {
-            console.log('❌ Usuário não existe');
-            return null
+          if (!user || !user.password) {
+            return null;
           }
           
-          if (!user.password) {
-            console.log('❌ Usuário sem senha');
-            return null
-          }
-
-          console.log('Comparando senhas...');
-          console.log('Senha fornecida:', credentials.password);
-          console.log('Hash do banco:', user.password);
-          
-          const passwordMatch = await bcrypt.compare(credentials.password, user.password)
-          
-          console.log('Resultado da comparação:', passwordMatch);
+          const passwordMatch = await bcrypt.compare(credentials.password, user.password);
           
           if (!passwordMatch) {
-            console.log('❌ Senha não confere');
-            return null
+            return null;
           }
 
-          console.log('✅ Login bem sucedido!');
           return {
             id: user.id,
             email: user.email,
             name: user.name || '',
-          }
+          };
         } catch (error) {
-          console.error('❌ Erro durante login:', error);
+          console.error('Auth error:', error);
           return null;
         }
       }
@@ -80,20 +51,20 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        token.id = user.id
+        token.id = user.id;
       }
-      return token
+      return token;
     },
     async session({ session, token }) {
       if (session?.user) {
-        session.user.id = token.id as string
+        session.user.id = token.id as string;
       }
-      return session
+      return session;
     },
   },
-  debug: true // Ativar modo debug
-}
+  secret: process.env.NEXTAUTH_SECRET,
+};
 
-const handler = NextAuth(authOptions)
+const handler = NextAuth(authOptions);
 
-export { handler as GET, handler as POST }
+export { handler as GET, handler as POST };
