@@ -1,60 +1,64 @@
 import mysql from 'mysql2/promise';
 
 // Debug logs
-console.log('=== Database Configuration Debug ===');
-console.log('RAILWAY_ENVIRONMENT:', process.env.RAILWAY_ENVIRONMENT);
+console.log('=== Database Configuration ===');
 console.log('NODE_ENV:', process.env.NODE_ENV);
-console.log('DATABASE_URL_CM exists:', !!process.env.DATABASE_URL_CM);
-console.log('DATABASE_URL_MC exists:', !!process.env.DATABASE_URL_MC);
-console.log('MYSQL_HOST:', process.env.MYSQL_HOST);
 
-// Declarar as variáveis primeiro
+// Declarar as variáveis
 let dbCM: mysql.Pool;
 let dbMC: mysql.Pool;
 
-// Tentar usar DATABASE_URL primeiro
-if (process.env.DATABASE_URL_CM && process.env.DATABASE_URL_MC) {
-  console.log('Using DATABASE_URL configuration');
-  
-  dbCM = mysql.createPool(process.env.DATABASE_URL_CM);
-  dbMC = mysql.createPool(process.env.DATABASE_URL_MC);
-  
-} else {
-  console.log('Using individual connection parameters');
-  
-  // Configuração para Railway
-  const isProduction = process.env.NODE_ENV === 'production';
-  
-  const dbConfigCM = {
-    host: isProduction ? 'mysql' : 'interchange.proxy.rlwy.net',
-    port: isProduction ? 3306 : 47165,
-    user: 'root',
-    password: process.env.MYSQL_PASSWORD || 'tfsriTGGWosBoJrJCEyUCCjISxLiQzfA',
-    database: 'community_mapper',
-    waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0
-  };
+// Configuração
+const isProduction = process.env.NODE_ENV === 'production';
 
-  const dbConfigMC = {
-    host: isProduction ? 'mysql' : 'interchange.proxy.rlwy.net',
-    port: isProduction ? 3306 : 47165,
-    user: 'root',
-    password: process.env.MYSQL_PASSWORD || 'tfsriTGGWosBoJrJCEyUCCjISxLiQzfA',
-    database: 'mapa_comunidade',
-    waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0
-  };
+const dbConfigCM = {
+  host: isProduction ? 'mysql' : 'interchange.proxy.rlwy.net',
+  port: isProduction ? 3306 : 47165,
+  user: 'root',
+  password: process.env.MYSQL_PASSWORD || 'tfsriTGGWosBoJrJCEyUCCjISxLiQzfA',
+  database: 'community_mapper',
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0,
+  enableKeepAlive: true,
+  keepAliveInitialDelay: 0
+};
 
-  console.log('CM Config:', { host: dbConfigCM.host, port: dbConfigCM.port, db: dbConfigCM.database });
-  console.log('MC Config:', { host: dbConfigMC.host, port: dbConfigMC.port, db: dbConfigMC.database });
+const dbConfigMC = {
+  host: isProduction ? 'mysql' : 'interchange.proxy.rlwy.net',
+  port: isProduction ? 3306 : 47165,
+  user: 'root',
+  password: process.env.MYSQL_PASSWORD || 'tfsriTGGWosBoJrJCEyUCCjISxLiQzfA',
+  database: 'mapa_comunidade',
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0,
+  enableKeepAlive: true,
+  keepAliveInitialDelay: 0
+};
 
-  dbCM = mysql.createPool(dbConfigCM);
-  dbMC = mysql.createPool(dbConfigMC);
-}
+// Criar pools
+dbCM = mysql.createPool(dbConfigCM);
+dbMC = mysql.createPool(dbConfigMC);
 
-// Exportar as pools
+// Adicionar handlers de erro
+dbCM.on('error', (err) => {
+  console.error('Database pool CM error:', err);
+  if (err.code === 'PROTOCOL_CONNECTION_LOST') {
+    console.log('Reconnecting CM pool...');
+    dbCM = mysql.createPool(dbConfigCM);
+  }
+});
+
+dbMC.on('error', (err) => {
+  console.error('Database pool MC error:', err);
+  if (err.code === 'PROTOCOL_CONNECTION_LOST') {
+    console.log('Reconnecting MC pool...');
+    dbMC = mysql.createPool(dbConfigMC);
+  }
+});
+
+// Exportar pools
 export { dbCM, dbMC };
 
 // Função query genérica
@@ -101,7 +105,7 @@ export async function getUserByEmail(email: string): Promise<User | null> {
   }
 }
 
-// Outras funções necessárias
+// Função para buscar pessoa por ID
 export async function getPersonById(id: string) {
   try {
     const [rows] = await dbCM.execute(
@@ -115,6 +119,7 @@ export async function getPersonById(id: string) {
   }
 }
 
+// Funções de Tags
 export async function getTagsByUserId(userId: string) {
   try {
     const [rows] = await dbCM.execute(
@@ -205,3 +210,6 @@ export async function deleteTag(id: string) {
     return false;
   }
 }
+
+// Exportar pools como aliases para compatibilidade
+export { dbCM as poolCM, dbMC as poolMC };
