@@ -19,8 +19,7 @@ const nextConfig = {
     MYSQL_USER: process.env.MYSQL_USER,
     MYSQL_PASSWORD: process.env.MYSQL_PASSWORD,
     
-    // Variáveis do ambiente
-    NODE_ENV: process.env.NODE_ENV,
+    // Variáveis do ambiente (REMOVIDO NODE_ENV)
     RAILWAY_ENVIRONMENT: process.env.RAILWAY_ENVIRONMENT,
     
     // NextAuth
