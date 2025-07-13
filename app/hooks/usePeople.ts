@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react'
 
 interface Person {
   id: string;
@@ -32,229 +32,161 @@ interface Person {
   political_role?: string;
   is_candidate?: boolean;
   is_elected?: boolean;
-  photo_url?: string; // 🆕 Campo para URL da foto
+  photo_url?: string;
 }
 
-export const usePeople = () => {
-  const [people, setPeople] = useState<Person[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+export function usePeople() {
+  const [people, setPeople] = useState<Person[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  // Função para buscar pessoas
-  const fetchPeople = async () => {
+  // Função para buscar pessoas da API
+  const fetchPeople = useCallback(async () => {
+    console.log('🔍 usePeople: Buscando pessoas...')
+    setLoading(true)
+    setError(null)
+
     try {
-      setLoading(true);
-      setError(null);
-      
       const response = await fetch('/api/people', {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
         },
-        cache: 'no-cache'
-      });
-      
+      })
+
       if (!response.ok) {
-        throw new Error(`Erro HTTP: ${response.status}`);
+        throw new Error(`Erro HTTP: ${response.status}`)
       }
-      
-      const data = await response.json();
-      
-      if (data.success && Array.isArray(data.people)) {
-        setPeople(data.people);
-      } else if (Array.isArray(data)) {
-        setPeople(data);
+
+      const data = await response.json()
+      console.log('✅ usePeople: Dados recebidos:', data)
+
+      if (data.success && Array.isArray(data.data)) {
+        // Converter id para string (garantir compatibilidade)
+        const peopleWithStringIds = data.data.map((person: any) => ({
+          ...person,
+          id: person.id.toString()
+        }))
+        
+        setPeople(peopleWithStringIds)
+        console.log(`✅ usePeople: ${peopleWithStringIds.length} pessoas carregadas`)
       } else {
-        throw new Error('Formato de dados inválido');
+        throw new Error('Formato de resposta inválido')
       }
-    } catch (err) {
-      console.error('Erro ao buscar pessoas:', err);
-      setError(err instanceof Error ? err.message : 'Erro desconhecido');
-      setPeople([]);
+    } catch (err: any) {
+      console.error('❌ usePeople: Erro ao buscar pessoas:', err)
+      setError(err.message || 'Erro desconhecido')
+      setPeople([])
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }, [])
 
   // Função para adicionar pessoa
-  const addPerson = async (personData: Omit<Person, 'id'>) => {
+  const addPerson = useCallback(async (personData: Partial<Person>) => {
+    console.log('➕ usePeople: Adicionando pessoa:', personData.name)
+    setLoading(true)
+
     try {
-      setError(null);
-      
-      // Validar dados obrigatórios
-      if (!personData.name || !personData.context || !personData.proximity) {
-        throw new Error('Nome, contexto e proximidade são obrigatórios');
-      }
-
-      // Preparar dados para envio
-      const dataToSend = {
-        ...personData,
-        // Garantir valores padrão
-        importance: personData.importance || 3,
-        trust_level: personData.trust_level || 3,
-        influence_level: personData.influence_level || 3,
-        city: personData.city || 'Gramado',
-        state: personData.state || 'RS',
-        gender: personData.gender || 'N',
-        is_candidate: Boolean(personData.is_candidate),
-        is_elected: Boolean(personData.is_elected),
-        // Converter strings vazias para null
-        nickname: personData.nickname || null,
-        birth_date: personData.birth_date || null,
-        occupation: personData.occupation || null,
-        company: personData.company || null,
-        position: personData.position || null,
-        professional_class: personData.professional_class || null,
-        political_party: personData.political_party || null,
-        political_position: personData.political_position || null,
-        political_role: personData.political_role || null,
-        phone: personData.phone || null,
-        mobile: personData.mobile || null,
-        email: personData.email || null,
-        address: personData.address || null,
-        neighborhood: personData.neighborhood || null,
-        zip_code: personData.zip_code || null,
-        whatsapp: personData.whatsapp || null,
-        notes: personData.notes || null,
-        last_contact: personData.last_contact || null,
-        contact_frequency: personData.contact_frequency || null,
-        photo_url: personData.photo_url || null
-      };
-
       const response = await fetch('/api/people', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(dataToSend),
-      });
-
-      const responseData = await response.json();
+        body: JSON.stringify({
+          ...personData,
+          user_id: 8 // ID do usuário admin (ajustar conforme necessário)
+        }),
+      })
 
       if (!response.ok) {
-        throw new Error(responseData.error || `Erro HTTP: ${response.status}`);
+        throw new Error(`Erro ao adicionar pessoa: ${response.status}`)
       }
 
-      // Recarregar lista
-      await fetchPeople();
-      return responseData;
-      
-    } catch (err) {
-      console.error('Erro ao adicionar pessoa:', err);
-      setError(err instanceof Error ? err.message : 'Erro ao adicionar pessoa');
-      throw err;
+      const data = await response.json()
+      console.log('✅ usePeople: Pessoa adicionada:', data)
+
+      // Recarregar lista após adicionar
+      await fetchPeople()
+      return data.data
+    } catch (err: any) {
+      console.error('❌ usePeople: Erro ao adicionar pessoa:', err)
+      setError(err.message)
+      throw err
+    } finally {
+      setLoading(false)
     }
-  };
+  }, [fetchPeople])
 
   // Função para atualizar pessoa
-  const updatePerson = async (personData: Person) => {
+  const updatePerson = useCallback(async (id: string, personData: Partial<Person>) => {
+    console.log('✏️ usePeople: Atualizando pessoa ID:', id)
+    setLoading(true)
+
     try {
-      setError(null);
-      
-      if (!personData.id) {
-        throw new Error('ID da pessoa é obrigatório para atualização');
-      }
-
-      // Preparar dados para envio (mesmo processo do addPerson)
-      const dataToSend = {
-        ...personData,
-        // Garantir valores padrão
-        importance: personData.importance || 3,
-        trust_level: personData.trust_level || 3,
-        influence_level: personData.influence_level || 3,
-        city: personData.city || 'Gramado',
-        state: personData.state || 'RS',
-        gender: personData.gender || 'N',
-        is_candidate: Boolean(personData.is_candidate),
-        is_elected: Boolean(personData.is_elected),
-        // Converter strings vazias para null
-        nickname: personData.nickname || null,
-        birth_date: personData.birth_date || null,
-        occupation: personData.occupation || null,
-        company: personData.company || null,
-        position: personData.position || null,
-        professional_class: personData.professional_class || null,
-        political_party: personData.political_party || null,
-        political_position: personData.political_position || null,
-        political_role: personData.political_role || null,
-        phone: personData.phone || null,
-        mobile: personData.mobile || null,
-        email: personData.email || null,
-        address: personData.address || null,
-        neighborhood: personData.neighborhood || null,
-        zip_code: personData.zip_code || null,
-        whatsapp: personData.whatsapp || null,
-        notes: personData.notes || null,
-        last_contact: personData.last_contact || null,
-        contact_frequency: personData.contact_frequency || null,
-        photo_url: personData.photo_url || null
-      };
-
-      const response = await fetch('/api/people', {
+      const response = await fetch(`/api/people/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(dataToSend),
-      });
-
-      const responseData = await response.json();
+        body: JSON.stringify(personData),
+      })
 
       if (!response.ok) {
-        throw new Error(responseData.error || `Erro HTTP: ${response.status}`);
+        throw new Error(`Erro ao atualizar pessoa: ${response.status}`)
       }
 
-      // Recarregar lista
-      await fetchPeople();
-      return responseData;
-      
-    } catch (err) {
-      console.error('Erro ao atualizar pessoa:', err);
-      setError(err instanceof Error ? err.message : 'Erro ao atualizar pessoa');
-      throw err;
+      const data = await response.json()
+      console.log('✅ usePeople: Pessoa atualizada:', data)
+
+      // Recarregar lista após atualizar
+      await fetchPeople()
+      return data.data
+    } catch (err: any) {
+      console.error('❌ usePeople: Erro ao atualizar pessoa:', err)
+      setError(err.message)
+      throw err
+    } finally {
+      setLoading(false)
     }
-  };
+  }, [fetchPeople])
 
   // Função para deletar pessoa
-  const deletePerson = async (personId: string) => {
-    try {
-      setError(null);
-      
-      if (!personId) {
-        throw new Error('ID da pessoa é obrigatório');
-      }
+  const deletePerson = useCallback(async (id: string) => {
+    console.log('🗑️ usePeople: Deletando pessoa ID:', id)
+    setLoading(true)
 
-      const response = await fetch(`/api/people?id=${personId}`, {
+    try {
+      const response = await fetch(`/api/people/${id}`, {
         method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
+      })
 
       if (!response.ok) {
-        const responseData = await response.json();
-        throw new Error(responseData.error || `Erro HTTP: ${response.status}`);
+        throw new Error(`Erro ao deletar pessoa: ${response.status}`)
       }
 
-      // Recarregar lista
-      await fetchPeople();
-      
-    } catch (err) {
-      console.error('Erro ao deletar pessoa:', err);
-      setError(err instanceof Error ? err.message : 'Erro ao deletar pessoa');
-      throw err;
+      console.log('✅ usePeople: Pessoa deletada')
+
+      // Recarregar lista após deletar
+      await fetchPeople()
+    } catch (err: any) {
+      console.error('❌ usePeople: Erro ao deletar pessoa:', err)
+      setError(err.message)
+      throw err
+    } finally {
+      setLoading(false)
     }
-  };
+  }, [fetchPeople])
 
   // Função para recarregar dados
-  const refreshPeople = async () => {
-    await fetchPeople();
-  };
+  const refreshPeople = useCallback(() => {
+    return fetchPeople()
+  }, [fetchPeople])
 
   // Carregar dados na inicialização
   useEffect(() => {
-    fetchPeople();
-  }, []);
+    fetchPeople()
+  }, [fetchPeople])
 
   return {
     people,
@@ -264,5 +196,5 @@ export const usePeople = () => {
     updatePerson,
     deletePerson,
     refreshPeople,
-  };
-};
+  }
+}
