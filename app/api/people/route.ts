@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 const { executeQueryCM } = require('../../../lib/db')
 
-// GET - Listar pessoas (já funcionando)
 export async function GET(request: NextRequest) {
   try {
     console.log('🔍 Buscando pessoas...')
@@ -24,7 +23,6 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST - Criar pessoa nova
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
@@ -38,22 +36,17 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
     
-    // Inserção no banco
+    // Query simplificada com apenas campos essenciais
     const result = await executeQueryCM(`
       INSERT INTO people (
-        user_id, name, nickname, birth_date, gender, context, proximity,
-        importance, trust_level, influence_level, occupation, company, position,
-        professional_class, political_party, political_position, is_candidate, is_elected,
-        political_role, phone, mobile, email, address, city, state, zip_code,
-        facebook, instagram, twitter, linkedin, whatsapp, notes, photo_url,
-        last_contact, contact_frequency, neighborhood, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+        user_id, name, nickname, context, proximity, importance, 
+        trust_level, influence_level, occupation, company, phone, 
+        mobile, email, city, state, notes, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
     `, [
-      body.user_id || 8, // ID do usuário logado
+      body.user_id || 8,
       body.name,
       body.nickname || null,
-      body.birth_date || null,
-      body.gender || 'N',
       body.context,
       body.proximity,
       body.importance || 3,
@@ -61,30 +54,12 @@ export async function POST(request: NextRequest) {
       body.influence_level || 3,
       body.occupation || null,
       body.company || null,
-      body.position || null,
-      body.professional_class || null,
-      body.political_party || null,
-      body.political_position || null,
-      body.is_candidate || 0,
-      body.is_elected || 0,
-      body.political_role || null,
       body.phone || null,
       body.mobile || null,
       body.email || null,
-      body.address || null,
-      body.city || null,
-      body.state || null,
-      body.zip_code || null,
-      body.facebook || null,
-      body.instagram || null,
-      body.twitter || null,
-      body.linkedin || null,
-      body.whatsapp || null,
-      body.notes || null,
-      body.photo_url || null,
-      body.last_contact || null,
-      body.contact_frequency || null,
-      body.neighborhood || null
+      body.city || 'Gramado',
+      body.state || 'RS',
+      body.notes || null
     ])
     
     console.log(`✅ Pessoa criada com ID: ${result.insertId}`)
@@ -108,7 +83,6 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// PUT - Atualizar pessoa (será criado em arquivo separado)
 export async function PUT(request: NextRequest) {
   return NextResponse.json({
     success: false,
