@@ -2,10 +2,9 @@ import NextAuth from 'next-auth'
 import type { NextAuthOptions } from 'next-auth'
 import CredentialsProvider from 'next-auth/providers/credentials'
 import bcrypt from 'bcryptjs'
-import { authenticator } from 'otplib'
 import mysql from 'mysql2/promise'
 
-// Configuração Railway MySQL
+// Configuração Railway MySQL (CORRIGIDA)
 const dbConfig = {
   host: 'interchange.proxy.rlwy.net',
   port: 47165,
@@ -15,14 +14,14 @@ const dbConfig = {
   ssl: { rejectUnauthorized: false }
 }
 
-// Função para buscar usuário por email
+// Função para buscar usuário por email (CORRIGIDA)
 async function getUserByEmail(email: string) {
   try {
     console.log('🔍 Buscando usuário:', email)
     const connection = await mysql.createConnection(dbConfig)
     
     const [rows] = await connection.execute(
-      'SELECT id, email, password_hash, name, two_factor_enabled, two_factor_secret, two_factor_backup_codes FROM users WHERE email = ?',
+      'SELECT id, email, password_hash, name FROM users WHERE email = ?',
       [email]
     )
     
@@ -40,11 +39,8 @@ async function getUserByEmail(email: string) {
     return {
       id: users[0].id,
       email: users[0].email,
-      password: users[0].password_hash,
-      name: users[0].name,
-      twoFactorEnabled: users[0].two_factor_enabled,
-      twoFactorSecret: users[0].two_factor_secret,
-      backupCodes: users[0].two_factor_backup_codes
+      password: users[0].password_hash, // Campo correto!
+      name: users[0].name
     }
   } catch (error) {
     console.error('❌ Erro ao buscar usuário:', error)
@@ -58,13 +54,12 @@ export const authOptions: NextAuthOptions = {
       name: 'credentials',
       credentials: {
         email: { label: "Email", type: "email" },
-        password: { label: "Senha", type: "password" },
-        twoFactorCode: { label: "Código 2FA (opcional)", type: "text" }
+        password: { label: "Senha", type: "password" }
       },
       async authorize(credentials) {
-        console.log('=== TENTATIVA DE LOGIN COM 2FA ===')
+        console.log('=== TENTATIVA DE LOGIN (Railway) ===')
         console.log('Email:', credentials?.email)
-        console.log('2FA Code fornecido:', credentials?.twoFactorCode ? 'Sim' : 'Não')
+        console.log('Senha fornecida:', credentials?.password ? 'Sim' : 'Não')
 
         if (!credentials?.email || !credentials?.password) {
           console.log('❌ Credenciais incompletas')
@@ -80,6 +75,12 @@ export const authOptions: NextAuthOptions = {
             return null
           }
           
+          console.log('✅ Usuário encontrado:', {
+            id: user.id,
+            email: user.email,
+            name: user.name
+          })
+          
           if (!user.password) {
             console.log('❌ Usuário sem senha configurada')
             return null
@@ -92,47 +93,6 @@ export const authOptions: NextAuthOptions = {
           if (!passwordMatch) {
             console.log('❌ Senha incorreta')
             return null
-          }
-
-          console.log('✅ Senha correta!')
-
-          // Verificar 2FA se estiver ativado
-          if (user.twoFactorEnabled) {
-            console.log('🔒 2FA está ativado, verificando código...')
-            
-            if (!credentials.twoFactorCode) {
-              console.log('❌ Código 2FA obrigatório mas não fornecido')
-              return null
-            }
-
-            const code = credentials.twoFactorCode.replace(/\s/g, '') // Remove espaços
-            
-            // Verificar código 2FA
-            const isValidCode = authenticator.verify({
-              token: code,
-              secret: user.twoFactorSecret
-            })
-
-            if (!isValidCode) {
-              // Tentar códigos de backup
-              if (user.backupCodes) {
-                const backupCodes = JSON.parse(user.backupCodes)
-                if (backupCodes.includes(code.toUpperCase())) {
-                  console.log('✅ Código de backup válido usado')
-                  // TODO: Remover código de backup usado
-                } else {
-                  console.log('❌ Código 2FA e backup inválidos')
-                  return null
-                }
-              } else {
-                console.log('❌ Código 2FA inválido')
-                return null
-              }
-            } else {
-              console.log('✅ Código 2FA válido!')
-            }
-          } else {
-            console.log('ℹ️ 2FA não está ativado para este usuário')
           }
 
           console.log('✅ Login autorizado com sucesso!')
@@ -154,7 +114,6 @@ export const authOptions: NextAuthOptions = {
             id: user.id.toString(),
             email: user.email,
             name: user.name || 'Usuário',
-            twoFactorEnabled: user.twoFactorEnabled
           }
         } catch (error) {
           console.error('❌ Erro durante autenticação:', error)
@@ -165,7 +124,7 @@ export const authOptions: NextAuthOptions = {
   ],
   session: {
     strategy: 'jwt',
-    maxAge: 4 * 60 * 60, // 4 horas (mais restritivo com 2FA)
+    maxAge: 24 * 60 * 60, // 24 horas
   },
   pages: {
     signIn: '/login',
@@ -178,7 +137,6 @@ export const authOptions: NextAuthOptions = {
         token.id = user.id
         token.email = user.email
         token.name = user.name
-        token.twoFactorEnabled = (user as any).twoFactorEnabled
       }
       return token
     },
@@ -187,21 +145,20 @@ export const authOptions: NextAuthOptions = {
         session.user.id = token.id as string
         session.user.email = token.email as string
         session.user.name = token.name as string
-        ;(session.user as any).twoFactorEnabled = token.twoFactorEnabled
       }
       return session
     },
   },
   events: {
     async signIn({ user, account, profile }) {
-      console.log('🎉 Usuário logado com 2FA:', user.email)
+      console.log('🎉 Usuário logado:', user.email)
     },
     async signOut({ session, token }) {
       console.log('👋 Usuário deslogado:', token?.email || 'desconhecido')
     },
   },
-  debug: true,
-  secret: process.env.NEXTAUTH_SECRET || 'mapa-comunidade-secret-2fa-2025',
+  debug: true, // Ativar debug sempre
+  secret: process.env.NEXTAUTH_SECRET || 'mapa-comunidade-secret-railway-2025',
 }
 
 const handler = NextAuth(authOptions)
